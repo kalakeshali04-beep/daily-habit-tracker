@@ -275,8 +275,33 @@
       .step-controls button.primary-step { color: #190b36; border: 0; background: #a78bfa; font-weight: 800; }
       .step-status { grid-column: 1 / -1; color: #c4b5fd; font-size: .88rem; }
 
-      .form-grid { display: grid; grid-template-columns: 1.4fr .6fr .7fr auto; gap: 12px; align-items: end; }
+      .form-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+      .form-grid .wide-field { grid-column: span 2; }
       .form-grid label, .settings-grid label { display: grid; gap: 7px; color: #9ca3af; font-size: .82rem; font-weight: 700; }
+      .goal-day-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .goal-day-picker button {
+        min-width: 42px;
+        min-height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        background: var(--panel-soft);
+        font-weight: 800;
+      }
+      .goal-day-picker button.active {
+        border-color: var(--primary);
+        background: var(--primary-soft);
+      }
+      .goal-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
       .swatches {
         display: flex;
         flex-wrap: wrap;
@@ -432,6 +457,7 @@
 
       @media (max-width: 860px) {
         .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid { grid-template-columns: 1fr; }
+        .form-grid .wide-field { grid-column: auto; }
         .schedule-form .wide-field { grid-column: auto; }
         .schedule-item { grid-template-columns: 1fr; }
         .habit-card, .goal-card { grid-template-columns: 1fr; }
@@ -534,9 +560,13 @@
         <section class="panel">
           <div class="panel-heading"><div><span class="eyebrow">Set goals</span><h2>Create a habit</h2></div></div>
           <form class="form-grid" id="habit-form">
-            <label>Habit<input class="field" id="habit-name" placeholder="Read for 30 minutes" required /></label>
-            <label>Goal<input class="field" id="habit-goal" type="number" min="1" value="1" required /></label>
+            <label class="wide-field">Habit<input class="field" id="habit-name" placeholder="Read for 30 minutes" required /></label>
+            <label>Daily goal<input class="field" id="habit-goal" type="number" min="1" value="1" required /></label>
             <label>Unit<select class="select-field" id="habit-unit"><option value="boolean">done</option><option value="mins">mins</option><option value="cups">cups</option><option value="liters">liters</option><option value="pages">pages</option><option value="steps">steps</option></select></label>
+            <label>Category<select class="select-field" id="habit-category"><option value="health">Health</option><option value="study">Study</option><option value="work">Work</option><option value="home">Home</option><option value="social">Social</option><option value="mental">Mental</option></select></label>
+            <label>Goal style<select class="select-field" id="habit-goal-type"><option value="daily">Daily on selected days</option><option value="weekly">Weekly total</option></select></label>
+            <label>Weekly target<input class="field" id="habit-weekly-goal" type="number" min="1" value="3" required /></label>
+            <label class="wide-field">Active days / rest days<div class="goal-day-picker" id="habit-weekdays" aria-label="Habit active days"></div></label>
             <button class="primary-action" type="submit">Add habit</button>
           </form>
           <div class="swatches" id="swatches" role="radiogroup" aria-label="Habit color"></div>
@@ -635,6 +665,15 @@
         { value: "0", label: "Sun" },
       ];
       const REPEAT_LABELS = { once: "One day", daily: "Daily", weekdays: "Weekdays", weekends: "Weekends", specific: "Specific days" };
+      const HABIT_CATEGORIES = [
+        { value: "health", label: "Health" },
+        { value: "study", label: "Study" },
+        { value: "work", label: "Work" },
+        { value: "home", label: "Home" },
+        { value: "social", label: "Social" },
+        { value: "mental", label: "Mental" },
+      ];
+      const ALL_DAY_VALUES = WEEKDAYS.map((day) => day.value);
       let session = loadSession();
       let settings = loadSettings();
       let state = loadState();
@@ -646,6 +685,7 @@
       let activeDay = todayKey();
       let selectedScheduleDate = todayKey();
       let selectedScheduleDays = ["1", "2", "3", "4", "5"];
+      let selectedHabitDays = [...ALL_DAY_VALUES];
       let stepTracking = false;
       let lastMagnitude = 0;
       let lastStepAt = 0;
@@ -683,10 +723,10 @@
       function buildSeedState() {
         const seeded = {
           habits: [
-            { id: "habit_read", name: "Read", description: "Focused pages or minutes", targetAmount: 30, unit: "mins", colorCode: "#5eead4", createdAt: new Date().toISOString() },
-            { id: "habit_water", name: "Hydrate", description: "Drink water steadily", targetAmount: 3, unit: "liters", colorCode: "#60a5fa", createdAt: new Date().toISOString() },
-            { id: "habit_move", name: "Move", description: "Daily movement", targetAmount: 1, unit: "boolean", colorCode: "#f472b6", createdAt: new Date().toISOString() },
-            { id: "habit_steps", name: "Steps", description: "Phone motion step counter", targetAmount: 10000, unit: "steps", colorCode: "#a78bfa", createdAt: new Date().toISOString() },
+            { id: "habit_read", name: "Read", description: "Focused pages or minutes", targetAmount: 30, unit: "mins", category: "study", goalType: "daily", activeDays: [...ALL_DAY_VALUES], weeklyTarget: 150, colorCode: "#5eead4", createdAt: new Date().toISOString() },
+            { id: "habit_water", name: "Hydrate", description: "Drink water steadily", targetAmount: 3, unit: "liters", category: "health", goalType: "daily", activeDays: [...ALL_DAY_VALUES], weeklyTarget: 21, colorCode: "#60a5fa", createdAt: new Date().toISOString() },
+            { id: "habit_move", name: "Move", description: "Daily movement", targetAmount: 1, unit: "boolean", category: "health", goalType: "daily", activeDays: ["1", "3", "5"], weeklyTarget: 3, colorCode: "#f472b6", createdAt: new Date().toISOString() },
+            { id: "habit_steps", name: "Steps", description: "Phone motion step counter", targetAmount: 10000, unit: "steps", category: "health", goalType: "weekly", activeDays: [...ALL_DAY_VALUES], weeklyTarget: 70000, colorCode: "#a78bfa", createdAt: new Date().toISOString() },
           ],
           logs: [],
         };
@@ -744,15 +784,74 @@
       }
 
       function getActiveHabits(current = state) { return current.habits.filter((habit) => !habit.archivedAt); }
+      function categoryLabel(value) {
+        return HABIT_CATEGORIES.find((category) => category.value === value)?.label || "Health";
+      }
+      function goalTypeFor(habit) { return habit.goalType || "daily"; }
+      function activeDaysFor(habit) {
+        return habit.activeDays?.length ? habit.activeDays.map(String) : [...ALL_DAY_VALUES];
+      }
+      function isHabitScheduledForDate(habit, date) {
+        if (goalTypeFor(habit) === "weekly") return true;
+        const weekday = String(new Date(`${toDateKey(date)}T12:00:00`).getDay());
+        return activeDaysFor(habit).includes(weekday);
+      }
+      function weekStart(date) {
+        const base = typeof date === "string" ? new Date(`${date}T12:00:00`) : new Date(date);
+        const day = base.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        base.setDate(base.getDate() + diff);
+        return toDateKey(base);
+      }
+      function weekDaysFor(date) {
+        const start = weekStart(date);
+        return eachDay(start, addDays(start, 6));
+      }
+      function weeklyTargetFor(habit) {
+        return Math.max(1, Number(habit.weeklyTarget || habit.targetAmount || 1));
+      }
+      function targetForDate(habit, date) {
+        if (goalTypeFor(habit) === "weekly") return weeklyTargetFor(habit);
+        return isHabitScheduledForDate(habit, date) ? Math.max(1, Number(habit.targetAmount || 1)) : 0;
+      }
+      function completedForDate(current, habitId, date) {
+        return current.logs.find((log) => log.habitId === habitId && log.date === toDateKey(date))?.completedAmount || 0;
+      }
+      function completedForWeek(current, habitId, date) {
+        return weekDaysFor(date).reduce((sum, day) => sum + completedForDate(current, habitId, day), 0);
+      }
+      function formatDays(days) {
+        const values = days.map(String);
+        if (values.length === ALL_DAY_VALUES.length) return "Every day";
+        if (["1", "2", "3", "4", "5"].every((day) => values.includes(day)) && values.length === 5) return "Weekdays";
+        if (["6", "0"].every((day) => values.includes(day)) && values.length === 2) return "Weekends";
+        return values.map((day) => WEEKDAYS.find((entry) => entry.value === day)?.label).filter(Boolean).join(", ") || "Rest only";
+      }
+      function goalPlanText(habit) {
+        if (goalTypeFor(habit) === "weekly") return `${weeklyTargetFor(habit)} ${habit.unit} weekly`;
+        return `${habit.targetAmount} ${habit.unit} on ${formatDays(activeDaysFor(habit))}`;
+      }
       function getHabitOrThrow(current, id) {
         const habit = current.habits.find((item) => item.id === id && !item.archivedAt);
         if (!habit) throw new Error(`Habit ${id} was not found.`);
         return habit;
       }
-      function createHabit(current, name, targetAmount, unit, color, description = "") {
+      function createHabit(current, name, targetAmount, unit, color, description = "", options = {}) {
         return {
           ...current,
-          habits: [{ id: uid("habit"), name: name.trim(), description, targetAmount: Math.max(1, Number(targetAmount)), unit, colorCode: color, createdAt: new Date().toISOString() }, ...current.habits],
+          habits: [{
+            id: uid("habit"),
+            name: name.trim(),
+            description,
+            targetAmount: Math.max(1, Number(targetAmount)),
+            unit,
+            category: options.category || "health",
+            goalType: options.goalType || "daily",
+            activeDays: options.activeDays?.length ? options.activeDays : [...ALL_DAY_VALUES],
+            weeklyTarget: Math.max(1, Number(options.weeklyTarget || targetAmount)),
+            colorCode: color,
+            createdAt: new Date().toISOString(),
+          }, ...current.habits],
         };
       }
       function updateHabit(current, id, updates) {
@@ -765,7 +864,8 @@
         const dateKey = toDateKey(date);
         const existing = current.logs.find((log) => log.habitId === habitId && log.date === dateKey);
         const normalizedAmount = habit.unit === "boolean" ? Math.min(1, Math.max(0, amount)) : Math.max(0, amount);
-        const nextLog = { id: existing?.id || uid("log"), habitId, date: dateKey, completedAmount: normalizedAmount, isGoalMet: normalizedAmount >= habit.targetAmount };
+        const status = checkDailyGoalStatus({ ...current, logs: existing ? current.logs.map((log) => log.id === existing.id ? { ...log, completedAmount: normalizedAmount } : log) : [...current.logs, { id: existing?.id || uid("log"), habitId, date: dateKey, completedAmount: normalizedAmount }] }, habitId, dateKey);
+        const nextLog = { id: existing?.id || uid("log"), habitId, date: dateKey, completedAmount: normalizedAmount, isGoalMet: status.isGoalMet };
         return { ...current, logs: existing ? current.logs.map((log) => log.id === existing.id ? nextLog : log) : [...current.logs, nextLog] };
       }
       function logProgress(current, habitId, date, amount) {
@@ -774,12 +874,14 @@
       }
       function checkDailyGoalStatus(current, habitId, date) {
         const habit = getHabitOrThrow(current, habitId);
-        const log = current.logs.find((item) => item.habitId === habitId && item.date === toDateKey(date));
-        const percentage = Math.min(100, Math.round(((log?.completedAmount || 0) / habit.targetAmount) * 100));
-        return { isGoalMet: percentage >= 100, percentage };
+        const target = targetForDate(habit, date);
+        if (!target) return { isGoalMet: true, percentage: 100, targetAmount: 0, completedAmount: 0, isRestDay: true };
+        const completedAmount = goalTypeFor(habit) === "weekly" ? completedForWeek(current, habitId, date) : completedForDate(current, habitId, date);
+        const percentage = Math.min(100, Math.round((completedAmount / target) * 100));
+        return { isGoalMet: percentage >= 100, percentage, targetAmount: target, completedAmount, isRestDay: false };
       }
       function getDailyRingData(current, date) {
-        return getActiveHabits(current).map((habit) => {
+        return getActiveHabits(current).filter((habit) => targetForDate(habit, date) > 0).map((habit) => {
           const status = checkDailyGoalStatus(current, habit.id, date);
           return { habitId: habit.id, label: habit.name, percentage: status.percentage, color: habit.colorCode };
         });
@@ -787,7 +889,13 @@
       function calculateCurrentStreak(current, habitId) {
         let streak = 0;
         let cursor = todayKey();
-        while (checkDailyGoalStatus(current, habitId, cursor).isGoalMet) {
+        while (true) {
+          const status = checkDailyGoalStatus(current, habitId, cursor);
+          if (status.isRestDay) {
+            cursor = toDateKey(addDays(cursor, -1));
+            continue;
+          }
+          if (!status.isGoalMet) break;
           streak += 1;
           cursor = toDateKey(addDays(cursor, -1));
         }
@@ -797,18 +905,19 @@
         const habit = current.habits.find((item) => item.id === habitId);
         if (!habit) return [];
         return eachDay(startDate, endDate).map((date) => {
-          const value = current.logs.find((log) => log.habitId === habitId && log.date === date)?.completedAmount || 0;
-          return { date, value, goal: habit.targetAmount, isGoalMet: value >= habit.targetAmount };
+          const status = checkDailyGoalStatus(current, habitId, date);
+          const value = goalTypeFor(habit) === "weekly" ? completedForWeek(current, habitId, date) : completedForDate(current, habitId, date);
+          return { date, value, goal: status.targetAmount, isGoalMet: status.isGoalMet, isRestDay: status.isRestDay };
         });
       }
       function averageCompletion(current, habits, days) {
-        const possible = habits.length * days.length;
+        const possible = habits.reduce((sum, habit) => sum + days.filter((day) => targetForDate(habit, day) > 0).length, 0);
         if (!possible) return 0;
-        const completed = habits.reduce((sum, habit) => sum + days.filter((day) => checkDailyGoalStatus(current, habit.id, day).isGoalMet).length, 0);
+        const completed = habits.reduce((sum, habit) => sum + days.filter((day) => targetForDate(habit, day) > 0 && checkDailyGoalStatus(current, habit.id, day).isGoalMet).length, 0);
         return Math.round((completed / possible) * 100);
       }
       function generateDailyReport(current, date) {
-        const habits = getActiveHabits(current);
+        const habits = getActiveHabits(current).filter((habit) => targetForDate(habit, date) > 0);
         const met = habits.filter((habit) => checkDailyGoalStatus(current, habit.id, date).isGoalMet);
         return { averageCompletionRate: habits.length ? Math.round((met.length / habits.length) * 100) : 0, habitsCompleted: met.length };
       }
@@ -830,7 +939,7 @@
       function ensureStepHabit() {
         let habit = getStepHabit();
         if (habit) return habit;
-        state = createHabit(state, "Steps", 10000, "steps", "#a78bfa", "Phone motion step counter");
+        state = createHabit(state, "Steps", 10000, "steps", "#a78bfa", "Phone motion step counter", { category: "health", goalType: "weekly", weeklyTarget: 70000, activeDays: [...ALL_DAY_VALUES] });
         return getStepHabit();
       }
       function getTodayStepCount() {
@@ -866,10 +975,13 @@
         const today = todayKey();
         document.getElementById("habit-list").innerHTML = habits.map((habit) => {
           const status = checkDailyGoalStatus(state, habit.id, today);
-          const completedAmount = state.logs.find((log) => log.habitId === habit.id && log.date === today)?.completedAmount || 0;
-          const remaining = Math.max(0, habit.targetAmount - completedAmount);
+          const completedAmount = status.completedAmount || 0;
+          const targetAmount = status.targetAmount || habit.targetAmount;
+          const remaining = Math.max(0, targetAmount - completedAmount);
           const unit = habit.unit === "boolean" ? "done" : habit.unit;
-          return `<article class="habit-card"><div class="habit-main">${ringSvg(status.percentage, habit.colorCode)}<div><h3>${escapeHtml(habit.name)}</h3><p>${completedAmount} / ${habit.targetAmount} ${unit}</p><span>${remaining === 0 ? "Goal met" : `${remaining} ${habit.unit} remaining`} · ${calculateCurrentStreak(state, habit.id)} day streak</span></div></div><div class="habit-actions"><button type="button" data-action="decrement" data-id="${habit.id}">−</button><button type="button" data-action="increment" data-id="${habit.id}">+</button><button type="button" data-action="complete" data-id="${habit.id}">✓</button></div></article>`;
+          const progressText = status.isRestDay ? "Rest day" : `${completedAmount} / ${targetAmount} ${unit}`;
+          const helperText = status.isRestDay ? `${categoryLabel(habit.category)} · next active day coming up` : `${remaining === 0 ? "Goal met" : `${remaining} ${habit.unit} remaining`} · ${goalTypeFor(habit) === "weekly" ? "weekly target" : `${calculateCurrentStreak(state, habit.id)} day streak`}`;
+          return `<article class="habit-card"><div class="habit-main">${ringSvg(status.percentage, habit.colorCode)}<div><h3>${escapeHtml(habit.name)}</h3><p>${escapeHtml(progressText)}</p><span>${escapeHtml(helperText)}</span></div></div><div class="habit-actions"><button type="button" data-action="decrement" data-id="${habit.id}">−</button><button type="button" data-action="increment" data-id="${habit.id}">+</button><button type="button" data-action="complete" data-id="${habit.id}">✓</button></div></article>`;
         }).join("");
       }
       function renderReports() {
@@ -878,7 +990,8 @@
         const weekly = generateWeeklyReport(state, addDays(today, -6));
         const now = new Date();
         const monthly = generateMonthlyReport(state, now.getMonth() + 1, now.getFullYear());
-        document.getElementById("completion-headline").textContent = `${daily.habitsCompleted} of ${getActiveHabits().length} habits complete`;
+        const dueToday = getActiveHabits().filter((habit) => targetForDate(habit, today) > 0).length;
+        document.getElementById("completion-headline").textContent = `${daily.habitsCompleted} of ${dueToday} goals due today complete`;
         document.getElementById("reports").innerHTML = `<div class="report-tile"><span>Daily</span><strong>${daily.averageCompletionRate}%</strong><p>${daily.habitsCompleted} completed today</p></div><div class="report-tile"><span>Weekly</span><strong>${weekly.averageCompletionRate}%</strong><p>Completion this week</p></div><div class="report-tile"><span>Monthly</span><strong>${monthly.averageCompletionRate}%</strong><p>${monthly.monthOverMonthGrowth >= 0 ? "+" : ""}${monthly.monthOverMonthGrowth}% vs last month</p></div>`;
       }
       function renderStepCounter() {
@@ -898,12 +1011,12 @@
         document.getElementById("chart-title").textContent = habit.name;
         const start = chartMode === "weekly" ? addDays(todayKey(), -6) : addDays(todayKey(), -29);
         const data = getGraphData(state, habit.id, start, todayKey());
-        const maxValue = Math.max(habit.targetAmount, ...data.map((point) => point.value), 1);
+        const maxValue = Math.max(...data.map((point) => point.goal || 0), ...data.map((point) => point.value), 1);
         const width = 940, height = 300, pad = { top: 18, right: 20, bottom: 36, left: 38 };
         const innerWidth = width - pad.left - pad.right, innerHeight = height - pad.top - pad.bottom;
         const xFor = (index) => pad.left + (data.length <= 1 ? 0 : (index / (data.length - 1)) * innerWidth);
         const yFor = (value) => pad.top + innerHeight - (value / maxValue) * innerHeight;
-        const goalY = yFor(habit.targetAmount);
+        const goalY = yFor(data[data.length - 1]?.goal || habit.targetAmount);
         let marks = "";
         if (chartMode === "weekly") {
           const barWidth = Math.max(18, innerWidth / data.length - 16);
@@ -911,7 +1024,8 @@
             const x = pad.left + index * (innerWidth / data.length) + 8;
             const y = yFor(point.value);
             const h = Math.max(2, innerHeight - (y - pad.top));
-            return `<rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="6" fill="${point.isGoalMet ? habit.colorCode : `${habit.colorCode}66`}"></rect><text class="chart-axis" x="${x + barWidth / 2}" y="${height - 11}" text-anchor="middle">${formatReadableDate(point.date).replace(" ", "\u00a0")}</text>`;
+            const fill = point.isRestDay ? "rgba(156,163,175,.35)" : point.isGoalMet ? habit.colorCode : `${habit.colorCode}66`;
+            return `<rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="6" fill="${fill}"></rect><text class="chart-axis" x="${x + barWidth / 2}" y="${height - 11}" text-anchor="middle">${formatReadableDate(point.date).replace(" ", "\u00a0")}</text>`;
           }).join("");
         } else {
           const path = data.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index)} ${yFor(point.value)}`).join(" ");
@@ -925,8 +1039,11 @@
       function renderSwatches() {
         document.getElementById("swatches").innerHTML = COLORS.map((color) => `<button type="button" class="swatch ${color === selectedColor ? "active" : ""}" data-color="${color}" style="background:${color}"></button>`).join("");
       }
+      function renderHabitDayPicker() {
+        document.getElementById("habit-weekdays").innerHTML = WEEKDAYS.map((day) => `<button type="button" class="${selectedHabitDays.includes(day.value) ? "active" : ""}" data-habit-weekday="${day.value}">${day.label}</button>`).join("");
+      }
       function renderGoals() {
-        document.getElementById("goals-list").innerHTML = getActiveHabits().map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${habit.targetAmount} ${habit.unit} · ${habit.description || "No description"}</p></div><div class="habit-actions"><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("");
+        document.getElementById("goals-list").innerHTML = getActiveHabits().map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${escapeHtml(goalPlanText(habit))} · ${escapeHtml(habit.description || "No description")}</p><div class="goal-meta"><span class="category-pill">${escapeHtml(categoryLabel(habit.category))}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Weekly target" : "Daily target"}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Flexible week" : `${escapeHtml(formatDays(activeDaysFor(habit)))} active`}</span></div></div><div class="habit-actions"><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("");
       }
       function scheduleRepeatFor(item) {
         if (item.repeat) return item.repeat;
@@ -1081,6 +1198,7 @@
         renderTabs(habits);
         renderChart();
         renderSwatches();
+        renderHabitDayPicker();
         renderGoals();
         renderSchedule();
         renderThemes();
@@ -1186,11 +1304,31 @@
       document.querySelectorAll(".nav-tabs button").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
       document.getElementById("habit-form").addEventListener("submit", (event) => {
         event.preventDefault();
-        state = createHabit(state, document.getElementById("habit-name").value, Number(document.getElementById("habit-goal").value), document.getElementById("habit-unit").value, selectedColor);
+        const dailyGoal = Number(document.getElementById("habit-goal").value);
+        const weeklyGoal = Number(document.getElementById("habit-weekly-goal").value);
+        state = createHabit(state, document.getElementById("habit-name").value, dailyGoal, document.getElementById("habit-unit").value, selectedColor, "", {
+          category: document.getElementById("habit-category").value,
+          goalType: document.getElementById("habit-goal-type").value,
+          weeklyTarget: weeklyGoal,
+          activeDays: selectedHabitDays.length ? [...selectedHabitDays] : [...ALL_DAY_VALUES],
+        });
         event.currentTarget.reset();
         document.getElementById("habit-goal").value = "1";
+        document.getElementById("habit-weekly-goal").value = "3";
         document.getElementById("habit-unit").value = "boolean";
+        document.getElementById("habit-category").value = "health";
+        document.getElementById("habit-goal-type").value = "daily";
+        selectedHabitDays = [...ALL_DAY_VALUES];
         selectedColor = COLORS[0];
+        render();
+      });
+      document.getElementById("habit-weekdays").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-habit-weekday]");
+        if (!button) return;
+        const day = button.dataset.habitWeekday;
+        selectedHabitDays = selectedHabitDays.includes(day)
+          ? selectedHabitDays.filter((value) => value !== day)
+          : [...selectedHabitDays, day];
         render();
       });
       document.getElementById("schedule-form").addEventListener("submit", (event) => {
@@ -1249,15 +1387,25 @@
         if (!habit) return;
         if (button.dataset.action === "increment") state = logProgress(state, habit.id, todayKey(), 1);
         if (button.dataset.action === "decrement") state = logProgress(state, habit.id, todayKey(), -1);
-        if (button.dataset.action === "complete") state = setProgress(state, habit.id, todayKey(), habit.targetAmount);
+        if (button.dataset.action === "complete") state = setProgress(state, habit.id, todayKey(), checkDailyGoalStatus(state, habit.id, todayKey()).targetAmount || habit.targetAmount);
         render();
       });
       document.getElementById("goals-list").addEventListener("click", (event) => {
         const plus = event.target.closest("button[data-goal-plus]");
         const minus = event.target.closest("button[data-goal-minus]");
         const del = event.target.closest("button[data-goal-delete]");
-        if (plus) state = updateHabit(state, plus.dataset.goalPlus, { targetAmount: getHabitOrThrow(state, plus.dataset.goalPlus).targetAmount + 1 });
-        if (minus) state = updateHabit(state, minus.dataset.goalMinus, { targetAmount: Math.max(1, getHabitOrThrow(state, minus.dataset.goalMinus).targetAmount - 1) });
+        if (plus) {
+          const habit = getHabitOrThrow(state, plus.dataset.goalPlus);
+          state = goalTypeFor(habit) === "weekly"
+            ? updateHabit(state, habit.id, { weeklyTarget: weeklyTargetFor(habit) + 1 })
+            : updateHabit(state, habit.id, { targetAmount: habit.targetAmount + 1 });
+        }
+        if (minus) {
+          const habit = getHabitOrThrow(state, minus.dataset.goalMinus);
+          state = goalTypeFor(habit) === "weekly"
+            ? updateHabit(state, habit.id, { weeklyTarget: Math.max(1, weeklyTargetFor(habit) - 1) })
+            : updateHabit(state, habit.id, { targetAmount: Math.max(1, habit.targetAmount - 1) });
+        }
         if (del) state = deleteHabit(state, del.dataset.goalDelete);
         render();
       });
@@ -1270,7 +1418,7 @@
         if (logButton) state = logProgress(state, logButton.dataset.scheduleLog, selectedScheduleDate, 1);
         if (completeButton) {
           const habit = getActiveHabits().find((item) => item.id === completeButton.dataset.scheduleComplete);
-          if (habit) state = setProgress(state, habit.id, selectedScheduleDate, habit.targetAmount);
+          if (habit) state = setProgress(state, habit.id, selectedScheduleDate, checkDailyGoalStatus(state, habit.id, selectedScheduleDate).targetAmount || habit.targetAmount);
         }
         render();
       });
