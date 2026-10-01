@@ -350,6 +350,59 @@
       .segmented-control button.active { background: rgba(94,234,212,.14); }
       .chart-shell { overflow: hidden; width: 100%; height: 320px; }
       .chart-axis { fill: #9ca3af; font-size: 12px; }
+      .analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; }
+      .analytics-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: 0 16px 42px rgba(0,0,0,.22);
+      }
+      .analytics-card h3 { margin: 4px 0 12px; }
+      .analytics-card strong.metric { display: block; font-size: 2.15rem; line-height: 1; }
+      .heatmap-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(22px, 1fr));
+        gap: 6px;
+      }
+      .heatmap-cell {
+        min-height: 28px;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 6px;
+        background: rgba(255,255,255,.05);
+      }
+      .streak-list, .time-list, .missed-notes-list { display: grid; gap: 10px; }
+      .streak-row, .time-row, .missed-note {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+      .streak-row { grid-template-columns: 1fr auto; align-items: center; }
+      .time-row {
+        grid-template-columns: minmax(86px, auto) 1fr auto;
+        align-items: center;
+      }
+      .time-bar {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255,255,255,.08);
+      }
+      .time-bar i { display: block; height: 100%; border-radius: inherit; background: var(--primary); }
+      .missed-note textarea {
+        width: 100%;
+        min-height: 72px;
+        resize: vertical;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: var(--text);
+        background: rgba(255,255,255,.06);
+        font: inherit;
+      }
 
       .settings-grid, .theme-grid, .schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 14px; }
       .profile-box { display: grid; gap: 8px; }
@@ -526,7 +579,7 @@
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
       @media (max-width: 860px) {
-        .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid { grid-template-columns: 1fr; }
+        .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid, .analytics-grid { grid-template-columns: 1fr; }
         .form-grid .wide-field { grid-column: auto; }
         .schedule-form .wide-field { grid-column: auto; }
         .drawer-panel .form-grid, .drawer-panel .schedule-form { grid-template-columns: 1fr; }
@@ -625,6 +678,11 @@
             </div>
           </div>
           <div class="chart-shell" id="chart"></div>
+        </section>
+        <section class="analytics-grid" id="analytics-grid"></section>
+        <section class="panel">
+          <div class="panel-heading"><div><span class="eyebrow">Missed days</span><h2>What caused missed days?</h2></div></div>
+          <div class="missed-notes-list" id="missed-notes-list"></div>
         </section>
       </section>
 
@@ -733,6 +791,7 @@
       const SESSION_KEY = "habit-tracker:session";
       const SETTINGS_KEY = "habit-tracker:settings";
       const REMINDER_LOG_KEY = "habit-tracker:reminder-log";
+      const MISSED_NOTES_KEY = "habit-tracker:missed-notes";
       const CLOUD_TABLE = "habit_tracker_profiles";
       const COLORS = ["#5eead4", "#60a5fa", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#86efac", "#38bdf8", "#fb923c", "#c084fc", "#34d399", "#f43f5e"];
       const THEMES = [
@@ -765,6 +824,7 @@
       let settings = loadSettings();
       let state = loadState();
       let schedule = loadSchedule();
+      let missedNotes = loadMissedNotes();
       let selectedColor = COLORS[0];
       let selectedHabitId = "";
       let chartMode = "weekly";
@@ -855,6 +915,9 @@
           return buildSeedSchedule();
         }
       }
+      function loadMissedNotes() {
+        try { return JSON.parse(localStorage.getItem(storageKey(MISSED_NOTES_KEY)) || "{}"); } catch { return {}; }
+      }
       function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } }
       function loadSettings() {
         try {
@@ -865,6 +928,7 @@
       }
       function saveState() { localStorage.setItem(storageKey(HABITS_KEY), JSON.stringify(state.habits)); localStorage.setItem(storageKey(LOGS_KEY), JSON.stringify(state.logs)); }
       function saveSchedule() { localStorage.setItem(storageKey(SCHEDULE_KEY), JSON.stringify(schedule)); }
+      function saveMissedNotes() { localStorage.setItem(storageKey(MISSED_NOTES_KEY), JSON.stringify(missedNotes)); }
       function saveSession() { session ? localStorage.setItem(SESSION_KEY, JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY); }
       function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
       function hasCloudConfig() {
@@ -914,10 +978,12 @@
         if (data) {
           state = { habits: data.habits || state.habits, logs: data.logs || state.logs };
           schedule = data.schedule || schedule;
+          missedNotes = data.missed_notes || data.missedNotes || missedNotes;
           settings = { ...settings, ...(data.settings || {}), supabaseUrl: settings.supabaseUrl, supabaseAnonKey: settings.supabaseAnonKey, cloudEnabled: true, googleConnected: true };
           applyTheme();
           saveState();
           saveSchedule();
+          saveMissedNotes();
           saveSettings();
         } else {
           await saveCloudData(true);
@@ -934,7 +1000,7 @@
         const client = getCloudClient();
         const user = await getCloudUser();
         if (!client || !user) return;
-        const payload = { user_id: user.id, email: user.email, ...cloudPayload() };
+        const payload = { user_id: user.id, email: user.email, missed_notes: missedNotes, ...cloudPayload() };
         const { error } = await client.from(CLOUD_TABLE).upsert(payload, { onConflict: "user_id" });
         if (error) {
           setCloudStatus(`Cloud sync failed: ${error.message}`);
@@ -1151,6 +1217,71 @@
         const previousAverage = averageCompletion(current, getActiveHabits(current), previousDays);
         return { averageCompletionRate: currentAverage, monthOverMonthGrowth: currentAverage - previousAverage };
       }
+      function completionForDate(current, date) {
+        const habits = getActiveHabits(current).filter((habit) => targetForDate(habit, date) > 0);
+        if (!habits.length) return 0;
+        return Math.round(habits.reduce((sum, habit) => sum + checkDailyGoalStatus(current, habit.id, date).percentage, 0) / habits.length);
+      }
+      function getHeatmapData(daysBack = 34) {
+        return eachDay(addDays(todayKey(), -daysBack), todayKey()).map((date) => ({ date, value: completionForDate(state, date) }));
+      }
+      function longestStreakForHabit(current, habitId, daysBack = 90) {
+        let longest = 0;
+        let currentRun = 0;
+        eachDay(addDays(todayKey(), -daysBack), todayKey()).forEach((date) => {
+          const status = checkDailyGoalStatus(current, habitId, date);
+          if (status.isRestDay) return;
+          if (status.isGoalMet) {
+            currentRun += 1;
+            longest = Math.max(longest, currentRun);
+          } else {
+            currentRun = 0;
+          }
+        });
+        return longest;
+      }
+      function getStreakHistory() {
+        return getActiveHabits().map((habit) => ({
+          habit,
+          current: calculateCurrentStreak(state, habit.id),
+          longest: longestStreakForHabit(state, habit.id),
+        })).sort((a, b) => b.current - a.current || b.longest - a.longest);
+      }
+      function timeBucketFor(time) {
+        const hour = Number(String(time || "12:00").slice(0, 2));
+        if (hour < 12) return "Morning";
+        if (hour < 17) return "Afternoon";
+        if (hour < 21) return "Evening";
+        return "Night";
+      }
+      function getBestTimeOfDay() {
+        const buckets = { Morning: { met: 0, total: 0 }, Afternoon: { met: 0, total: 0 }, Evening: { met: 0, total: 0 }, Night: { met: 0, total: 0 } };
+        eachDay(addDays(todayKey(), -29), todayKey()).forEach((date) => {
+          getScheduleForDate(date).forEach((item) => {
+            if (!item.habitId) return;
+            const habit = getActiveHabits().find((entry) => entry.id === item.habitId);
+            if (!habit || targetForDate(habit, date) <= 0) return;
+            const bucket = buckets[timeBucketFor(item.start)];
+            bucket.total += 1;
+            if (checkDailyGoalStatus(state, habit.id, date).isGoalMet) bucket.met += 1;
+          });
+        });
+        return Object.entries(buckets).map(([label, stats]) => ({
+          label,
+          total: stats.total,
+          rate: stats.total ? Math.round((stats.met / stats.total) * 100) : 0,
+        })).sort((a, b) => b.rate - a.rate || b.total - a.total);
+      }
+      function missedNoteKey(date, habitId) { return `${date}:${habitId}`; }
+      function getRecentMissedDays(limit = 8) {
+        const rows = [];
+        eachDay(addDays(todayKey(), -20), todayKey()).reverse().forEach((date) => {
+          getDueHabitsForDate(date).forEach((habit) => {
+            if (!checkDailyGoalStatus(state, habit.id, date).isGoalMet) rows.push({ date, habit });
+          });
+        });
+        return rows.slice(0, limit);
+      }
 
       function getStepHabit() { return getActiveHabits().find((habit) => habit.unit === "steps") || getActiveHabits().find((habit) => habit.name.toLowerCase() === "steps"); }
       function ensureStepHabit() {
@@ -1225,6 +1356,7 @@
         const habit = getActiveHabits().find((item) => item.id === selectedHabitId) || getActiveHabits()[0];
         if (!habit) {
           document.getElementById("chart").innerHTML = `<div class="empty-state"><strong>No graph yet</strong><p>Create your first habit to see weekly and monthly progress here.</p></div>`;
+          renderAnalytics();
           return;
         }
         selectedHabitId = habit.id;
@@ -1255,6 +1387,30 @@
           }).join("")}`;
         }
         document.getElementById("chart").innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><line x1="${pad.left}" x2="${width - pad.right}" y1="${goalY}" y2="${goalY}" stroke="rgba(255,255,255,.28)" stroke-dasharray="6 6"></line><line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" stroke="rgba(255,255,255,.12)"></line><line x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${height - pad.bottom}" stroke="rgba(255,255,255,.12)"></line><text class="chart-axis" x="4" y="${goalY + 4}">goal</text>${marks}</svg>`;
+        renderAnalytics();
+      }
+      function renderAnalytics() {
+        const habits = getActiveHabits();
+        const weekDays = eachDay(addDays(todayKey(), -6), todayKey());
+        const consistency = averageCompletion(state, habits, weekDays);
+        const heatmap = getHeatmapData();
+        const streaks = getStreakHistory();
+        const timeData = getBestTimeOfDay();
+        const bestTime = timeData.find((item) => item.total > 0);
+        document.getElementById("analytics-grid").innerHTML = `
+          <article class="analytics-card"><span class="eyebrow">Weekly consistency</span><h3>This week's score</h3><strong class="metric">${consistency}%</strong><p class="muted">${consistency >= 80 ? "Strong rhythm this week." : consistency >= 50 ? "Some solid days, still room to tighten." : "A reset week. Start with one easy win."}</p></article>
+          <article class="analytics-card"><span class="eyebrow">Best time</span><h3>Best time of day</h3><strong class="metric">${bestTime ? bestTime.label : "None"}</strong><p class="muted">${bestTime ? `${bestTime.rate}% completion from scheduled blocks.` : "Add scheduled habit blocks to learn your best time."}</p></article>
+          <article class="analytics-card"><span class="eyebrow">Calendar heatmap</span><h3>Last 35 days</h3><div class="heatmap-grid">${heatmap.map((day) => `<span class="heatmap-cell" title="${day.date}: ${day.value}%" style="background: color-mix(in srgb, var(--primary) ${Math.max(8, day.value)}%, rgba(255,255,255,.05));"></span>`).join("")}</div></article>
+          <article class="analytics-card"><span class="eyebrow">Streak history</span><h3>Habit-by-habit</h3><div class="streak-list">${streaks.length ? streaks.map(({ habit, current, longest }) => `<div class="streak-row"><div><strong>${escapeHtml(habit.name)}</strong><p class="muted">${escapeHtml(categoryLabel(habit.category))}</p></div><span>${current} now · ${longest} best</span></div>`).join("") : `<div class="empty-state"><strong>No streaks yet</strong><p>Add habits and log progress to build streak history.</p></div>`}</div></article>
+          <article class="analytics-card"><span class="eyebrow">Time reports</span><h3>Scheduled completion</h3><div class="time-list">${timeData.map((item) => `<div class="time-row"><strong>${item.label}</strong><span class="time-bar"><i style="width:${item.rate}%"></i></span><span>${item.total ? `${item.rate}%` : "No data"}</span></div>`).join("")}</div></article>
+        `;
+        const missed = getRecentMissedDays();
+        document.getElementById("missed-notes-list").innerHTML = missed.length
+          ? missed.map(({ date, habit }) => {
+            const key = missedNoteKey(date, habit.id);
+            return `<article class="missed-note"><div><strong>${escapeHtml(habit.name)}</strong><p class="muted">${formatReadableDate(date)} · ${escapeHtml(categoryLabel(habit.category))}</p></div><textarea data-missed-note="${key}" placeholder="What caused this missed day?">${escapeHtml(missedNotes[key] || "")}</textarea></article>`;
+          }).join("")
+          : `<article class="empty-state"><strong>No missed days to explain</strong><p>Nice. When something is missed, you can add a quick reason here and spot patterns later.</p></article>`;
       }
       function renderSwatches() {
         document.getElementById("swatches").innerHTML = COLORS.map((color) => `<button type="button" class="swatch ${color === selectedColor ? "active" : ""}" data-color="${color}" style="background:${color}"></button>`).join("");
@@ -1491,6 +1647,7 @@
         renderDayTimer();
         saveState();
         saveSchedule();
+        saveMissedNotes();
         saveSettings();
         queueCloudSave();
       }
@@ -1549,6 +1706,7 @@
           habits: state.habits,
           logs: state.logs,
           schedule,
+          missedNotes,
           settings,
         };
       }
@@ -1573,6 +1731,7 @@
         session = { email: document.getElementById("login-email").value, provider: "email", signedInAt: new Date().toISOString() };
         state = loadState();
         schedule = loadSchedule();
+        missedNotes = loadMissedNotes();
         saveSession();
         render();
       });
@@ -1739,6 +1898,13 @@
         selectedHabitId = button.dataset.tab;
         render();
       });
+      document.getElementById("missed-notes-list").addEventListener("input", (event) => {
+        const field = event.target.closest("textarea[data-missed-note]");
+        if (!field) return;
+        missedNotes[field.dataset.missedNote] = field.value;
+        saveMissedNotes();
+        queueCloudSave();
+      });
       document.getElementById("weekly-mode").addEventListener("click", () => {
         chartMode = "weekly";
         document.getElementById("weekly-mode").classList.add("active");
@@ -1786,8 +1952,10 @@
         localStorage.removeItem(storageKey(LOGS_KEY));
         localStorage.removeItem(storageKey(SCHEDULE_KEY));
         localStorage.removeItem(storageKey(REMINDER_LOG_KEY));
+        localStorage.removeItem(storageKey(MISSED_NOTES_KEY));
         state = buildSeedState();
         schedule = buildSeedSchedule();
+        missedNotes = {};
         selectedScheduleDate = todayKey();
         selectedHabitId = "";
         render();

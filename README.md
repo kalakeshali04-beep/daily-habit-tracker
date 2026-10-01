@@ -28,6 +28,7 @@ create table if not exists public.habit_tracker_profiles (
   habits jsonb not null default '[]'::jsonb,
   logs jsonb not null default '[]'::jsonb,
   schedule jsonb not null default '[]'::jsonb,
+  missed_notes jsonb not null default '{}'::jsonb,
   settings jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
