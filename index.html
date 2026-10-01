@@ -133,6 +133,12 @@
       .primary-action { border: 0; color: var(--bg); background: var(--primary); font-weight: 800; }
       .ghost-action { border: 1px solid var(--border); color: var(--text); background: var(--panel-soft); }
       .danger-action { border: 1px solid rgba(251,113,133,.42); color: #fecdd3; background: rgba(251,113,133,.1); }
+      .primary-action, .ghost-action, .danger-action, .nav-tabs button, .habit-actions button {
+        transition: transform .18s ease, border-color .18s ease, background .18s ease, opacity .18s ease;
+      }
+      .primary-action:hover, .ghost-action:hover, .danger-action:hover, .nav-tabs button:hover, .habit-actions button:hover {
+        transform: translateY(-1px);
+      }
       .google-action {
         width: 100%;
         margin-top: 10px;
@@ -143,9 +149,9 @@
       .auth-note { margin-top: 14px; color: var(--muted); font-size: .84rem; }
 
       .app-shell {
-        width: min(1180px, calc(100% - 32px));
+        width: min(1180px, calc(100% - 40px));
         margin: 0 auto;
-        padding: 28px 0 48px;
+        padding: 32px 0 56px;
       }
       .app-topbar, .topbar-actions, .day-timer, .nav-tabs, .panel-heading, .habit-main, .habit-actions, .step-controls, .habit-tabs, .ring-legend {
         display: flex;
@@ -154,7 +160,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 18px;
-        margin-bottom: 18px;
+        margin-bottom: 22px;
       }
       .topbar-actions { align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
       .day-timer {
@@ -175,7 +181,7 @@
         top: 0;
         z-index: 5;
         gap: 8px;
-        padding: 10px 0 18px;
+        padding: 10px 0 22px;
         background: linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg), transparent 16%) 80%, transparent 100%);
         overflow-x: auto;
       }
@@ -189,17 +195,29 @@
       }
       .nav-tabs button.active { border-color: var(--primary); background: var(--primary-soft); }
 
-      .page { display: none; }
-      .page.active { display: grid; gap: 18px; }
-      .dashboard-grid { display: grid; grid-template-columns: minmax(280px,.9fr) minmax(340px,1.4fr); gap: 18px; }
+      .page { display: none; opacity: 0; transform: translateY(8px); }
+      .page.active {
+        display: grid;
+        gap: 24px;
+        opacity: 1;
+        transform: translateY(0);
+        animation: pageIn .24s ease both;
+      }
+      @keyframes pageIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .dashboard-grid { display: grid; grid-template-columns: minmax(280px,.9fr) minmax(340px,1.4fr); gap: 24px; }
       .panel {
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--panel);
         box-shadow: 0 20px 54px rgba(0,0,0,.28);
-        padding: 22px;
+        padding: 24px;
       }
-      .panel-heading { align-items: center; justify-content: space-between; gap: 18px; width: 100%; margin-bottom: 16px; }
+      .panel-heading { align-items: center; justify-content: space-between; gap: 18px; width: 100%; margin-bottom: 20px; }
+      .panel-heading h2 { margin-top: 4px; }
+      .toolbar-row { display: flex; justify-content: flex-end; gap: 10px; }
 
       .ring-stack { position: relative; display: grid; width: 220px; height: 220px; place-items: center; margin: 0 auto; }
       .ring-track { fill: transparent; stroke: rgba(255,255,255,.1); }
@@ -224,13 +242,13 @@
       }
       .dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px; }
 
-      .habit-list, .goals-list { display: grid; gap: 12px; }
+      .habit-list, .goals-list { display: grid; gap: 14px; }
       .habit-card, .goal-card {
         display: grid;
         grid-template-columns: 1fr auto;
         align-items: center;
         gap: 16px;
-        padding: 14px;
+        padding: 16px;
         border: 1px solid rgba(255,255,255,.08);
         border-radius: 8px;
         background: rgba(255,255,255,.04);
@@ -355,7 +373,7 @@
       .schedule-list {
         position: relative;
         display: grid;
-        gap: 12px;
+        gap: 14px;
         padding-left: 24px;
       }
       .schedule-list::before {
@@ -395,7 +413,7 @@
         grid-template-columns: 104px 1fr auto;
         align-items: center;
         gap: 12px;
-        padding: 12px;
+        padding: 16px;
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--panel-soft);
@@ -454,11 +472,64 @@
         border-radius: 8px;
         background: var(--panel-soft);
       }
+      .empty-state {
+        display: grid;
+        place-items: start;
+        gap: 10px;
+        min-height: 132px;
+        padding: 22px;
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--panel-soft), transparent 18%);
+      }
+      .empty-state strong { font-size: 1.05rem; }
+      .empty-state p { max-width: 560px; color: var(--muted); line-height: 1.55; }
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: none;
+        background: rgba(2,6,23,.62);
+        backdrop-filter: blur(8px);
+      }
+      .drawer-backdrop.active { display: block; animation: fadeIn .18s ease both; }
+      .drawer-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 31;
+        display: grid;
+        align-content: start;
+        gap: 18px;
+        width: min(560px, calc(100% - 18px));
+        height: 100vh;
+        padding: 26px;
+        border-left: 1px solid var(--border);
+        background: color-mix(in srgb, var(--bg), #020617 8%);
+        box-shadow: -24px 0 70px rgba(0,0,0,.38);
+        overflow-y: auto;
+        transform: translateX(105%);
+        transition: transform .24s ease;
+      }
+      .drawer-panel .form-grid,
+      .drawer-panel .schedule-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .drawer-panel.active { transform: translateX(0); }
+      .drawer-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+      }
+      .drawer-heading p { margin-top: 6px; color: var(--muted); line-height: 1.5; }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
       @media (max-width: 860px) {
         .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid { grid-template-columns: 1fr; }
         .form-grid .wide-field { grid-column: auto; }
         .schedule-form .wide-field { grid-column: auto; }
+        .drawer-panel .form-grid, .drawer-panel .schedule-form { grid-template-columns: 1fr; }
         .schedule-item { grid-template-columns: 1fr; }
         .habit-card, .goal-card { grid-template-columns: 1fr; }
         .habit-actions, .step-controls { justify-content: stretch; }
@@ -559,7 +630,32 @@
 
       <section class="page" id="page-goals">
         <section class="panel">
-          <div class="panel-heading"><div><span class="eyebrow">Set goals</span><h2>Create a habit</h2></div></div>
+          <div class="panel-heading"><div><span class="eyebrow">Current goals</span><h2>Edit targets</h2></div><button class="primary-action" type="button" id="open-habit-drawer">Add habit</button></div>
+          <div class="goals-list" id="goals-list"></div>
+        </section>
+      </section>
+
+      <section class="page" id="page-schedule">
+        <section class="panel">
+          <div class="panel-heading"><div><span class="eyebrow">Schedule</span><h2>Plan your habit week</h2></div><button class="primary-action" type="button" id="open-schedule-drawer">Add time block</button></div>
+          <div class="schedule-grid" id="schedule-grid"></div>
+          <div class="reminder-toolbar">
+            <button class="ghost-action" id="enable-reminders" type="button">Enable reminders</button>
+            <span class="muted" id="reminder-status">Reminders are local to this browser.</span>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading"><div><span class="eyebrow">Selected day</span><h2 id="schedule-today-title">Today</h2></div></div>
+          <div class="schedule-list" id="schedule-list"></div>
+        </section>
+      </section>
+
+      <div class="drawer-backdrop" id="drawer-backdrop"></div>
+      <aside class="drawer-panel" id="habit-drawer" aria-hidden="true">
+        <div class="drawer-heading">
+          <div><span class="eyebrow">Set goals</span><h2>Create a habit</h2><p>Choose the target, category, active days, and color.</p></div>
+          <button class="ghost-action" type="button" data-close-drawer>Close</button>
+        </div>
           <form class="form-grid" id="habit-form">
             <label class="wide-field">Habit<input class="field" id="habit-name" placeholder="Read for 30 minutes" required /></label>
             <label>Daily goal<input class="field" id="habit-goal" type="number" min="1" value="1" required /></label>
@@ -571,16 +667,13 @@
             <button class="primary-action" type="submit">Add habit</button>
           </form>
           <div class="swatches" id="swatches" role="radiogroup" aria-label="Habit color"></div>
-        </section>
-        <section class="panel">
-          <div class="panel-heading"><div><span class="eyebrow">Current goals</span><h2>Edit targets</h2></div></div>
-          <div class="goals-list" id="goals-list"></div>
-        </section>
-      </section>
+      </aside>
 
-      <section class="page" id="page-schedule">
-        <section class="panel">
-          <div class="panel-heading"><div><span class="eyebrow">Add time block</span><h2>Connect a habit to your day</h2></div></div>
+      <aside class="drawer-panel" id="schedule-drawer" aria-hidden="true">
+        <div class="drawer-heading">
+          <div><span class="eyebrow">Add time block</span><h2>Connect a habit to your day</h2><p>Plan habits or daily-life blocks for today or another date.</p></div>
+          <button class="ghost-action" type="button" data-close-drawer>Close</button>
+        </div>
           <form class="schedule-form" id="schedule-form">
             <label>Date<input class="field" id="schedule-date" type="date" required /></label>
             <label>Habit<select class="select-field" id="schedule-habit"></select></label>
@@ -593,20 +686,7 @@
             <label class="wide-field">Specific days<div class="weekday-picker" id="schedule-weekdays" aria-label="Specific repeat days"></div></label>
             <button class="primary-action" type="submit">Schedule</button>
           </form>
-          <div class="reminder-toolbar">
-            <button class="ghost-action" id="enable-reminders" type="button">Enable reminders</button>
-            <span class="muted" id="reminder-status">Reminders are local to this browser.</span>
-          </div>
-        </section>
-        <section class="panel">
-          <div class="panel-heading"><div><span class="eyebrow">Schedule</span><h2>Plan your habit week</h2></div></div>
-          <div class="schedule-grid" id="schedule-grid"></div>
-        </section>
-        <section class="panel">
-          <div class="panel-heading"><div><span class="eyebrow">Today’s plan</span><h2 id="schedule-today-title">Today</h2></div></div>
-          <div class="schedule-list" id="schedule-list"></div>
-        </section>
-      </section>
+      </aside>
 
       <section class="page" id="page-settings">
         <section class="panel">
@@ -1143,7 +1223,10 @@
       }
       function renderChart() {
         const habit = getActiveHabits().find((item) => item.id === selectedHabitId) || getActiveHabits()[0];
-        if (!habit) { document.getElementById("chart").innerHTML = ""; return; }
+        if (!habit) {
+          document.getElementById("chart").innerHTML = `<div class="empty-state"><strong>No graph yet</strong><p>Create your first habit to see weekly and monthly progress here.</p></div>`;
+          return;
+        }
         selectedHabitId = habit.id;
         document.getElementById("chart-title").textContent = habit.name;
         const start = chartMode === "weekly" ? addDays(todayKey(), -6) : addDays(todayKey(), -29);
@@ -1180,7 +1263,10 @@
         document.getElementById("habit-weekdays").innerHTML = WEEKDAYS.map((day) => `<button type="button" class="${selectedHabitDays.includes(day.value) ? "active" : ""}" data-habit-weekday="${day.value}">${day.label}</button>`).join("");
       }
       function renderGoals() {
-        document.getElementById("goals-list").innerHTML = getActiveHabits().map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${escapeHtml(goalPlanText(habit))} · ${escapeHtml(habit.description || "No description")}</p><div class="goal-meta"><span class="category-pill">${escapeHtml(categoryLabel(habit.category))}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Weekly target" : "Daily target"}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Flexible week" : `${escapeHtml(formatDays(activeDaysFor(habit)))} active`}</span></div></div><div class="habit-actions"><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("");
+        const habits = getActiveHabits();
+        document.getElementById("goals-list").innerHTML = habits.length
+          ? habits.map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${escapeHtml(goalPlanText(habit))} · ${escapeHtml(habit.description || "No description")}</p><div class="goal-meta"><span class="category-pill">${escapeHtml(categoryLabel(habit.category))}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Weekly target" : "Daily target"}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Flexible week" : `${escapeHtml(formatDays(activeDaysFor(habit)))} active`}</span></div></div><div class="habit-actions"><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("")
+          : `<article class="empty-state"><strong>No goals yet</strong><p>Add a habit to set daily or weekly goals, rest days, categories, and colors.</p><button class="primary-action" type="button" data-open-drawer="habit-drawer">Add habit</button></article>`;
       }
       function scheduleRepeatFor(item) {
         if (item.repeat) return item.repeat;
@@ -1329,7 +1415,7 @@
             const canSuggestLog = habit && selectedScheduleDate <= todayKey() && hasBlockEnded(item, selectedScheduleDate) && !status.isGoalMet;
             return `<article class="schedule-item"><div class="schedule-time">${item.start}-${item.end}</div><div><strong>${escapeHtml(item.title)}</strong><p class="muted">${escapeHtml(habit?.name || "Daily life")} · ${status.percentage}% complete</p><div class="schedule-meta"><span class="category-pill">${escapeHtml(item.category)}</span><span class="category-pill">${escapeHtml(repeatText(item))}</span><span class="category-pill">${escapeHtml(reminderText(item.reminderMinutes))}</span></div>${canSuggestLog ? `<div class="log-suggestion"><span class="muted">This block ended. Log ${escapeHtml(habit.name)}?</span><button class="ghost-action" type="button" data-schedule-log="${habit.id}">Log habit</button><button class="primary-action" type="button" data-schedule-complete="${habit.id}">Mark done</button></div>` : ""}</div><button class="ghost-action" type="button" data-schedule-delete="${item.id}">Remove</button></article>`;
           }).join("")
-          : `<article class="schedule-card"><strong>No time blocks yet</strong><p class="muted">Add study, work, rest, meals, chores, or exercise blocks for this date above.</p></article>`;
+          : `<article class="empty-state"><strong>No time blocks yet</strong><p>Add study, work, rest, meals, chores, or exercise blocks for this date.</p><button class="primary-action" type="button" data-open-drawer="schedule-drawer">Add time block</button></article>`;
       }
       function renderThemes() {
         document.getElementById("theme-grid").innerHTML = THEMES.map((theme) => `<button class="theme-card ${settings.theme === theme.id ? "active" : ""}" type="button" data-theme="${theme.id}"><strong>${theme.label}</strong><div class="theme-swatch-row">${theme.colors.map((color) => `<i style="background:${color}"></i>`).join("")}</div></button>`).join("");
@@ -1352,10 +1438,27 @@
         document.getElementById("next-day-label").textContent = timing.nextDayLabel;
       }
       function setPage(page) {
+        closeDrawers();
         activePage = page;
         document.querySelectorAll(".page").forEach((item) => item.classList.toggle("active", item.id === `page-${page}`));
         document.querySelectorAll(".nav-tabs button").forEach((button) => button.classList.toggle("active", button.dataset.page === page));
         document.getElementById("page-title").textContent = page === "today" ? "Today" : page === "graphs" ? "Graphs" : page === "schedule" ? "Schedule" : page === "goals" ? "Goals" : "Settings";
+      }
+      function openDrawer(id) {
+        document.getElementById("drawer-backdrop").classList.add("active");
+        document.querySelectorAll(".drawer-panel").forEach((drawer) => {
+          const active = drawer.id === id;
+          drawer.classList.toggle("active", active);
+          drawer.setAttribute("aria-hidden", active ? "false" : "true");
+        });
+      }
+      function closeDrawers() {
+        const backdrop = document.getElementById("drawer-backdrop");
+        if (backdrop) backdrop.classList.remove("active");
+        document.querySelectorAll(".drawer-panel").forEach((drawer) => {
+          drawer.classList.remove("active");
+          drawer.setAttribute("aria-hidden", "true");
+        });
       }
       function renderAuth() {
         document.getElementById("login-screen").classList.toggle("hidden", !!session);
@@ -1482,6 +1585,16 @@
       });
       document.getElementById("sign-out").addEventListener("click", () => { session = null; saveSession(); render(); });
       document.querySelectorAll(".nav-tabs button").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
+      document.getElementById("open-habit-drawer").addEventListener("click", () => openDrawer("habit-drawer"));
+      document.getElementById("open-schedule-drawer").addEventListener("click", () => openDrawer("schedule-drawer"));
+      document.getElementById("drawer-backdrop").addEventListener("click", closeDrawers);
+      document.querySelectorAll("[data-close-drawer]").forEach((button) => button.addEventListener("click", closeDrawers));
+      document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawers(); });
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-open-drawer]");
+        if (!button) return;
+        openDrawer(button.dataset.openDrawer);
+      });
       document.getElementById("habit-form").addEventListener("submit", (event) => {
         event.preventDefault();
         const dailyGoal = Number(document.getElementById("habit-goal").value);
@@ -1500,6 +1613,7 @@
         document.getElementById("habit-goal-type").value = "daily";
         selectedHabitDays = [...ALL_DAY_VALUES];
         selectedColor = COLORS[0];
+        closeDrawers();
         render();
       });
       document.getElementById("habit-weekdays").addEventListener("click", (event) => {
@@ -1538,6 +1652,7 @@
         document.getElementById("schedule-end").value = "09:00";
         document.getElementById("schedule-repeat").value = "once";
         document.getElementById("schedule-reminder").value = "0";
+        closeDrawers();
         render();
       });
       document.getElementById("schedule-date").addEventListener("change", (event) => {
