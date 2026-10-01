@@ -618,6 +618,8 @@
               <span class="muted" id="profile-provider">Email</span>
             </div>
             <label>Daily reset time<input class="field" id="reset-time" type="time" value="00:00" /></label>
+            <label>Morning summary<input class="field" id="morning-summary-time" type="time" value="07:30" /></label>
+            <label>End-day reminder<input class="field" id="end-day-reminder-time" type="time" value="21:00" /></label>
             <button class="ghost-action" type="button" id="mail-backup">Open Mail backup</button>
             <button class="ghost-action" type="button" id="gmail-backup">Open Gmail backup</button>
             <button class="ghost-action" type="button" id="reset-demo">Reset demo data</button>
@@ -776,9 +778,9 @@
       function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } }
       function loadSettings() {
         try {
-          return { theme: "midnight", googleClientId: "", googleConnected: false, supabaseUrl: "", supabaseAnonKey: "", cloudEnabled: false, cloudLastSyncedAt: "", ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+          return { theme: "midnight", googleClientId: "", googleConnected: false, supabaseUrl: "", supabaseAnonKey: "", cloudEnabled: false, cloudLastSyncedAt: "", morningSummaryTime: "07:30", endDayReminderTime: "21:00", ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
         } catch {
-          return { theme: "midnight", googleClientId: "", googleConnected: false, supabaseUrl: "", supabaseAnonKey: "", cloudEnabled: false, cloudLastSyncedAt: "" };
+          return { theme: "midnight", googleClientId: "", googleConnected: false, supabaseUrl: "", supabaseAnonKey: "", cloudEnabled: false, cloudLastSyncedAt: "", morningSummaryTime: "07:30", endDayReminderTime: "21:00" };
         }
       }
       function saveState() { localStorage.setItem(storageKey(HABITS_KEY), JSON.stringify(state.habits)); localStorage.setItem(storageKey(LOGS_KEY), JSON.stringify(state.logs)); }
@@ -1211,12 +1213,35 @@
         const end = new Date(`${date}T${item.end || "23:59"}:00`);
         return new Date() >= end;
       }
-      function reminderKey(item, date) { return `${date}:${item.id}:${item.start}:${item.reminderMinutes || 0}`; }
+      function reminderKey(type, date, id = "daily") { return `${type}:${date}:${id}`; }
       function getReminderLog() {
         try { return JSON.parse(localStorage.getItem(storageKey(REMINDER_LOG_KEY)) || "[]"); } catch { return []; }
       }
       function saveReminderLog(log) {
         localStorage.setItem(storageKey(REMINDER_LOG_KEY), JSON.stringify(log.slice(-120)));
+      }
+      function hasTimePassed(time, now = new Date()) {
+        const target = new Date(`${todayKey()}T${time || "00:00"}:00`);
+        return now >= target;
+      }
+      function sendHabitNotification(title, body) {
+        if (!("Notification" in window) || Notification.permission !== "granted") return false;
+        new Notification(title, { body });
+        return true;
+      }
+      function getDueHabitsForDate(date) {
+        return getActiveHabits().filter((habit) => targetForDate(habit, date) > 0);
+      }
+      function getMissedHabits(date) {
+        return getDueHabitsForDate(date).filter((habit) => !checkDailyGoalStatus(state, habit.id, date).isGoalMet);
+      }
+      function morningSummaryBody(date) {
+        const blocks = getScheduleForDate(date);
+        const goals = getDueHabitsForDate(date);
+        const firstBlocks = blocks.slice(0, 3).map((item) => `${item.title} at ${item.start}`);
+        const goalText = goals.length ? `${goals.length} goals due` : "no goals due";
+        const planText = firstBlocks.length ? firstBlocks.join(", ") : "no scheduled blocks";
+        return `Today: ${goalText}. Plan: ${planText}.`;
       }
       function updateReminderStatus() {
         const status = document.getElementById("reminder-status");
@@ -1226,7 +1251,7 @@
           return;
         }
         status.textContent = Notification.permission === "granted"
-          ? "Reminders are on for this browser."
+          ? "Reminders are on: morning plan, planned blocks, and missed goals."
           : Notification.permission === "denied"
             ? "Reminders are blocked in browser settings."
             : "Reminders are local to this browser.";
@@ -1245,19 +1270,35 @@
         const date = todayKey();
         const sent = new Set(getReminderLog());
         let changed = false;
+        const morningKey = reminderKey("morning", date);
+        if (hasTimePassed(settings.morningSummaryTime || "07:30", now) && !sent.has(morningKey)) {
+          if (sendHabitNotification("Morning plan", morningSummaryBody(date))) {
+            sent.add(morningKey);
+            changed = true;
+          }
+        }
         getScheduleForDate(date).forEach((item) => {
           const minutes = Number(item.reminderMinutes || 0);
-          if (!minutes) return;
           const reminderAt = new Date(`${date}T${item.start}:00`);
           reminderAt.setMinutes(reminderAt.getMinutes() - minutes);
           const diffMs = now.getTime() - reminderAt.getTime();
-          const key = reminderKey(item, date);
-          if (diffMs >= 0 && diffMs < 60000 && !sent.has(key)) {
-            new Notification(item.title, { body: `${reminderText(minutes)}: ${item.start}-${item.end}` });
+          const key = reminderKey("planned", date, item.id);
+          if (diffMs >= 0 && diffMs < 90000 && !sent.has(key)) {
+            sendHabitNotification(`You planned ${item.title} at ${item.start}`, `${reminderText(minutes)} · ${item.start}-${item.end}`);
             sent.add(key);
             changed = true;
           }
         });
+        const missedKey = reminderKey("missed", date);
+        const missed = getMissedHabits(date);
+        if (hasTimePassed(settings.endDayReminderTime || "21:00", now) && missed.length && !sent.has(missedKey)) {
+          const names = missed.slice(0, 4).map((habit) => habit.name).join(", ");
+          const extra = missed.length > 4 ? ` and ${missed.length - 4} more` : "";
+          if (sendHabitNotification("Missed habit reminder", `Before the day ends: ${names}${extra}.`)) {
+            sent.add(missedKey);
+            changed = true;
+          }
+        }
         if (changed) saveReminderLog([...sent]);
       }
       function getScheduleForDate(date) {
@@ -1296,6 +1337,8 @@
       function renderGoogleConnection() {
         document.getElementById("supabase-url").value = settings.supabaseUrl || "";
         document.getElementById("supabase-anon-key").value = settings.supabaseAnonKey || "";
+        document.getElementById("morning-summary-time").value = settings.morningSummaryTime || "07:30";
+        document.getElementById("end-day-reminder-time").value = settings.endDayReminderTime || "21:00";
         const syncedAt = settings.cloudLastSyncedAt ? ` Last sync ${new Date(settings.cloudLastSyncedAt).toLocaleString()}.` : "";
         document.getElementById("google-connection-status").textContent = settings.googleConnected
           ? `Cloud connected as ${session?.email || "Google account"}.${syncedAt}`
@@ -1502,6 +1545,16 @@
         render();
       });
       document.getElementById("enable-reminders").addEventListener("click", enableScheduleReminders);
+      document.getElementById("morning-summary-time").addEventListener("change", (event) => {
+        settings.morningSummaryTime = event.target.value || "07:30";
+        saveSettings();
+        render();
+      });
+      document.getElementById("end-day-reminder-time").addEventListener("change", (event) => {
+        settings.endDayReminderTime = event.target.value || "21:00";
+        saveSettings();
+        render();
+      });
       document.getElementById("schedule-repeat").addEventListener("change", (event) => {
         if (event.target.value === "weekdays") selectedScheduleDays = ["1", "2", "3", "4", "5"];
         if (event.target.value === "weekends") selectedScheduleDays = ["6", "0"];
@@ -1617,6 +1670,7 @@
         localStorage.removeItem(storageKey(HABITS_KEY));
         localStorage.removeItem(storageKey(LOGS_KEY));
         localStorage.removeItem(storageKey(SCHEDULE_KEY));
+        localStorage.removeItem(storageKey(REMINDER_LOG_KEY));
         state = buildSeedState();
         schedule = buildSeedSchedule();
         selectedScheduleDate = todayKey();
@@ -1636,7 +1690,7 @@
         const currentDay = todayKey();
         if (currentDay !== activeDay) { activeDay = currentDay; render(); }
       }, 1000);
-      setInterval(checkScheduleReminders, 30000);
+      setInterval(checkScheduleReminders, 15000);
 
       applyTheme();
       render();
