@@ -472,19 +472,20 @@
         .nav-tabs button { min-width: 92px; }
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <section class="login-shell" id="login-screen">
       <div class="login-card">
         <span class="eyebrow">Daily Habit Tracker</span>
         <h1>Sign in to your habits</h1>
-        <p>Use your email to keep a local profile on this device. The Google button is ready for a real OAuth setup when you host the app.</p>
+        <p>Use email for this device, or connect Supabase in Settings to use real Google login and cloud sync.</p>
         <form class="auth-form" id="login-form">
           <label>Email<input id="login-email" type="email" placeholder="you@example.com" required /></label>
           <button class="primary-action" type="submit">Continue with email</button>
         </form>
         <button class="primary-action google-action" type="button" id="google-login">Continue with Google</button>
-        <div class="auth-note" id="auth-note">Prototype mode: no password, no network account connection yet.</div>
+        <div class="auth-note" id="auth-note">Local mode works offline. Cloud mode syncs after Supabase is configured.</div>
       </div>
     </section>
 
@@ -628,13 +629,16 @@
           <div class="theme-grid" id="theme-grid"></div>
         </section>
         <section class="panel">
-          <div class="panel-heading"><div><span class="eyebrow">Google Account</span><h2>Connection</h2></div></div>
+          <div class="panel-heading"><div><span class="eyebrow">Cloud Sync</span><h2>Supabase + Google</h2></div></div>
           <div class="connection-box">
             <p class="muted" id="google-connection-status">Google is not connected yet.</p>
-            <label>Google OAuth Client ID<input class="field" id="google-client-id" placeholder="Paste your Google Client ID" /></label>
-            <button class="primary-action" type="button" id="connect-google">Connect Google account</button>
-            <button class="ghost-action" type="button" id="disconnect-google">Disconnect Google</button>
-            <p class="muted">Gmail backup opens a real Gmail draft. Full Google account sync needs a Google Cloud OAuth Client ID and a hosted app URL; this prototype saves the connection setting locally.</p>
+            <label>Supabase project URL<input class="field" id="supabase-url" placeholder="https://your-project.supabase.co" /></label>
+            <label>Supabase anon public key<input class="field" id="supabase-anon-key" placeholder="Paste anon public key" /></label>
+            <button class="primary-action" type="button" id="save-cloud-settings">Save cloud settings</button>
+            <button class="primary-action" type="button" id="connect-google">Sign in with Google</button>
+            <button class="ghost-action" type="button" id="sync-cloud">Sync now</button>
+            <button class="ghost-action" type="button" id="disconnect-google">Sign out cloud</button>
+            <p class="muted">Cloud sync saves habits, logs, schedules, themes, and settings to Supabase after Google login. Use the SQL setup in the README first.</p>
           </div>
         </section>
       </section>
@@ -647,6 +651,7 @@
       const SESSION_KEY = "habit-tracker:session";
       const SETTINGS_KEY = "habit-tracker:settings";
       const REMINDER_LOG_KEY = "habit-tracker:reminder-log";
+      const CLOUD_TABLE = "habit_tracker_profiles";
       const COLORS = ["#5eead4", "#60a5fa", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#86efac", "#38bdf8", "#fb923c", "#c084fc", "#34d399", "#f43f5e"];
       const THEMES = [
         { id: "midnight", label: "Midnight", className: "", colors: ["#08111f", "#5eead4", "#a78bfa"] },
@@ -689,6 +694,9 @@
       let stepTracking = false;
       let lastMagnitude = 0;
       let lastStepAt = 0;
+      let supabaseClient = null;
+      let cloudSyncTimer = null;
+      let isCloudHydrating = false;
 
       function storageKey(baseKey) {
         return session?.email ? `${baseKey}:${session.email.trim().toLowerCase()}` : baseKey;
@@ -768,15 +776,142 @@
       function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } }
       function loadSettings() {
         try {
-          return { theme: "midnight", googleClientId: "", googleConnected: false, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+          return { theme: "midnight", googleClientId: "", googleConnected: false, supabaseUrl: "", supabaseAnonKey: "", cloudEnabled: false, cloudLastSyncedAt: "", ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
         } catch {
-          return { theme: "midnight", googleClientId: "", googleConnected: false };
+          return { theme: "midnight", googleClientId: "", googleConnected: false, supabaseUrl: "", supabaseAnonKey: "", cloudEnabled: false, cloudLastSyncedAt: "" };
         }
       }
       function saveState() { localStorage.setItem(storageKey(HABITS_KEY), JSON.stringify(state.habits)); localStorage.setItem(storageKey(LOGS_KEY), JSON.stringify(state.logs)); }
       function saveSchedule() { localStorage.setItem(storageKey(SCHEDULE_KEY), JSON.stringify(schedule)); }
       function saveSession() { session ? localStorage.setItem(SESSION_KEY, JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY); }
       function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+      function hasCloudConfig() {
+        return Boolean(settings.supabaseUrl?.trim() && settings.supabaseAnonKey?.trim());
+      }
+      function getCloudClient() {
+        if (!hasCloudConfig() || !window.supabase) return null;
+        if (!supabaseClient) supabaseClient = window.supabase.createClient(settings.supabaseUrl.trim(), settings.supabaseAnonKey.trim());
+        return supabaseClient;
+      }
+      function cloudSettingsPayload() {
+        const { supabaseAnonKey, ...safeSettings } = settings;
+        return safeSettings;
+      }
+      function setCloudStatus(message) {
+        const el = document.getElementById("google-connection-status");
+        if (el) el.textContent = message;
+        const authNote = document.getElementById("auth-note");
+        if (authNote && !session) authNote.textContent = message;
+      }
+      function cloudPayload() {
+        return {
+          habits: state.habits,
+          logs: state.logs,
+          schedule,
+          settings: cloudSettingsPayload(),
+          updated_at: new Date().toISOString(),
+        };
+      }
+      async function getCloudUser() {
+        const client = getCloudClient();
+        if (!client) return null;
+        const { data } = await client.auth.getUser();
+        return data?.user || null;
+      }
+      async function loadCloudData() {
+        const client = getCloudClient();
+        const user = await getCloudUser();
+        if (!client || !user) return false;
+        isCloudHydrating = true;
+        const { data, error } = await client.from(CLOUD_TABLE).select("*").eq("user_id", user.id).maybeSingle();
+        if (error) {
+          setCloudStatus(`Cloud read failed: ${error.message}`);
+          isCloudHydrating = false;
+          return false;
+        }
+        if (data) {
+          state = { habits: data.habits || state.habits, logs: data.logs || state.logs };
+          schedule = data.schedule || schedule;
+          settings = { ...settings, ...(data.settings || {}), supabaseUrl: settings.supabaseUrl, supabaseAnonKey: settings.supabaseAnonKey, cloudEnabled: true, googleConnected: true };
+          applyTheme();
+          saveState();
+          saveSchedule();
+          saveSettings();
+        } else {
+          await saveCloudData(true);
+        }
+        settings.cloudLastSyncedAt = new Date().toISOString();
+        settings.cloudEnabled = true;
+        settings.googleConnected = true;
+        saveSettings();
+        isCloudHydrating = false;
+        return true;
+      }
+      async function saveCloudData(force = false) {
+        if (isCloudHydrating && !force) return;
+        const client = getCloudClient();
+        const user = await getCloudUser();
+        if (!client || !user) return;
+        const payload = { user_id: user.id, email: user.email, ...cloudPayload() };
+        const { error } = await client.from(CLOUD_TABLE).upsert(payload, { onConflict: "user_id" });
+        if (error) {
+          setCloudStatus(`Cloud sync failed: ${error.message}`);
+          return;
+        }
+        settings.cloudLastSyncedAt = new Date().toISOString();
+        settings.cloudEnabled = true;
+        settings.googleConnected = true;
+        saveSettings();
+        setCloudStatus(`Cloud synced as ${user.email}`);
+      }
+      function queueCloudSave() {
+        if (!session || session.provider !== "google" || !settings.cloudEnabled || isCloudHydrating) return;
+        clearTimeout(cloudSyncTimer);
+        cloudSyncTimer = setTimeout(() => saveCloudData(), 900);
+      }
+      async function signInWithGoogleCloud() {
+        const client = getCloudClient();
+        if (!client) {
+          setCloudStatus("Add your Supabase URL and anon key first.");
+          return;
+        }
+        await client.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href.split("#")[0] } });
+      }
+      async function syncCloudNow() {
+        const user = await getCloudUser();
+        if (!user) {
+          setCloudStatus("Sign in with Google before syncing.");
+          return;
+        }
+        await saveCloudData(true);
+      }
+      async function signOutCloud() {
+        const client = getCloudClient();
+        if (client) await client.auth.signOut();
+        settings.googleConnected = false;
+        settings.cloudEnabled = false;
+        session = null;
+        saveSession();
+        saveSettings();
+        render();
+      }
+      async function initializeCloudAuth() {
+        const client = getCloudClient();
+        if (!client) return;
+        client.auth.onAuthStateChange(async (_event, authSession) => {
+          if (!authSession?.user) return;
+          session = { email: authSession.user.email, provider: "google", supabaseUserId: authSession.user.id, signedInAt: new Date().toISOString() };
+          saveSession();
+          await loadCloudData();
+          render();
+        });
+        const { data } = await client.auth.getSession();
+        if (data?.session?.user) {
+          session = { email: data.session.user.email, provider: "google", supabaseUserId: data.session.user.id, signedInAt: new Date().toISOString() };
+          saveSession();
+          await loadCloudData();
+        }
+      }
       function applyTheme() {
         document.body.classList.remove(...THEMES.map((theme) => theme.className).filter(Boolean));
         const theme = THEMES.find((item) => item.id === settings.theme) || THEMES[0];
@@ -1159,10 +1294,14 @@
         document.getElementById("theme-grid").innerHTML = THEMES.map((theme) => `<button class="theme-card ${settings.theme === theme.id ? "active" : ""}" type="button" data-theme="${theme.id}"><strong>${theme.label}</strong><div class="theme-swatch-row">${theme.colors.map((color) => `<i style="background:${color}"></i>`).join("")}</div></button>`).join("");
       }
       function renderGoogleConnection() {
-        document.getElementById("google-client-id").value = settings.googleClientId || "";
+        document.getElementById("supabase-url").value = settings.supabaseUrl || "";
+        document.getElementById("supabase-anon-key").value = settings.supabaseAnonKey || "";
+        const syncedAt = settings.cloudLastSyncedAt ? ` Last sync ${new Date(settings.cloudLastSyncedAt).toLocaleString()}.` : "";
         document.getElementById("google-connection-status").textContent = settings.googleConnected
-          ? `Connected to Google as ${session?.email || "google.user@example.com"}`
-          : "Google is not connected yet.";
+          ? `Cloud connected as ${session?.email || "Google account"}.${syncedAt}`
+          : hasCloudConfig()
+            ? "Supabase is configured. Sign in with Google to start cloud sync."
+            : "Add Supabase settings to enable real Google login and cloud sync.";
       }
       function renderDayTimer() {
         const timing = getDayTiming();
@@ -1180,7 +1319,7 @@
         document.getElementById("app-screen").classList.toggle("hidden", !session);
         if (session) {
           document.getElementById("profile-email").textContent = session.email;
-          document.getElementById("profile-provider").textContent = session.provider === "google" ? "Google-linked local account" : "Email-linked local account";
+          document.getElementById("profile-provider").textContent = session.provider === "google" ? "Google cloud account" : "Email-linked local account";
         }
       }
       function render() {
@@ -1207,6 +1346,7 @@
         saveState();
         saveSchedule();
         saveSettings();
+        queueCloudSave();
       }
 
       async function startStepCounter() {
@@ -1290,15 +1430,12 @@
         saveSession();
         render();
       });
-      document.getElementById("google-login").addEventListener("click", () => {
-        const email = prompt("Enter your Google account email for this prototype:", "google.user@example.com") || "google.user@example.com";
-        session = { email, provider: "google", signedInAt: new Date().toISOString() };
-        settings.googleConnected = true;
-        state = loadState();
-        schedule = loadSchedule();
-        saveSession();
-        saveSettings();
-        render();
+      document.getElementById("google-login").addEventListener("click", async () => {
+        if (hasCloudConfig()) {
+          await signInWithGoogleCloud();
+          return;
+        }
+        setCloudStatus("Set Supabase in Settings first for real Google login.");
       });
       document.getElementById("sign-out").addEventListener("click", () => { session = null; saveSession(); render(); });
       document.querySelectorAll(".nav-tabs button").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
@@ -1459,25 +1596,17 @@
         applyTheme();
         render();
       });
-      document.getElementById("connect-google").addEventListener("click", () => {
-        settings.googleClientId = document.getElementById("google-client-id").value.trim();
-        settings.googleConnected = true;
-        if (!session || session.provider !== "google") {
-          const email = prompt("Enter your Google account email for this prototype:", session?.email || "google.user@example.com") || "google.user@example.com";
-          session = { email, provider: "google", signedInAt: new Date().toISOString() };
-          state = loadState();
-          schedule = loadSchedule();
-          saveSession();
-        }
+      document.getElementById("save-cloud-settings").addEventListener("click", async () => {
+        settings.supabaseUrl = document.getElementById("supabase-url").value.trim();
+        settings.supabaseAnonKey = document.getElementById("supabase-anon-key").value.trim();
+        supabaseClient = null;
         saveSettings();
+        await initializeCloudAuth();
         render();
       });
-      document.getElementById("disconnect-google").addEventListener("click", () => {
-        settings.googleConnected = false;
-        settings.googleClientId = document.getElementById("google-client-id").value.trim();
-        saveSettings();
-        render();
-      });
+      document.getElementById("connect-google").addEventListener("click", signInWithGoogleCloud);
+      document.getElementById("sync-cloud").addEventListener("click", syncCloudNow);
+      document.getElementById("disconnect-google").addEventListener("click", signOutCloud);
       document.getElementById("start-steps").addEventListener("click", startStepCounter);
       document.getElementById("pause-steps").addEventListener("click", pauseStepCounter);
       document.getElementById("add-steps").addEventListener("click", () => { addSteps(100); document.getElementById("step-status").textContent = "Added 100 steps manually."; });
@@ -1511,6 +1640,7 @@
 
       applyTheme();
       render();
+      initializeCloudAuth().then(() => render());
     </script>
   </body>
 </html>
