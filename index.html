@@ -327,11 +327,47 @@
       .theme-swatch-row { display: flex; gap: 6px; margin-top: 12px; }
       .theme-swatch-row i { width: 18px; height: 18px; border-radius: 999px; }
       .schedule-card strong { display: block; margin-bottom: 6px; }
-      .schedule-list { display: grid; gap: 10px; }
-      .schedule-form { display: grid; grid-template-columns: 1fr 1.1fr .8fr .55fr .55fr .8fr auto; gap: 12px; align-items: end; }
-      .schedule-item {
+      .schedule-list {
+        position: relative;
         display: grid;
-        grid-template-columns: auto 1fr auto;
+        gap: 12px;
+        padding-left: 24px;
+      }
+      .schedule-list::before {
+        content: "";
+        position: absolute;
+        left: 8px;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        border-radius: 999px;
+        background: linear-gradient(var(--primary), transparent);
+        opacity: .65;
+      }
+      .schedule-form { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+      .schedule-form .wide-field { grid-column: span 2; }
+      .weekday-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .weekday-picker button {
+        min-width: 42px;
+        min-height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        background: var(--panel-soft);
+        font-weight: 800;
+      }
+      .weekday-picker button.active {
+        border-color: var(--primary);
+        background: var(--primary-soft);
+      }
+      .schedule-item {
+        position: relative;
+        display: grid;
+        grid-template-columns: 104px 1fr auto;
         align-items: center;
         gap: 12px;
         padding: 12px;
@@ -339,21 +375,51 @@
         border-radius: 8px;
         background: var(--panel-soft);
       }
+      .schedule-item::before {
+        content: "";
+        position: absolute;
+        left: -21px;
+        top: 22px;
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--primary);
+        border-radius: 999px;
+        background: var(--bg);
+      }
       .schedule-time {
         min-width: 96px;
         color: var(--primary);
         font-weight: 800;
         font-variant-numeric: tabular-nums;
       }
+      .schedule-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
       .category-pill {
         display: inline-flex;
         width: fit-content;
-        margin-top: 6px;
         padding: 4px 8px;
         border-radius: 999px;
         color: var(--text);
         background: var(--accent-soft);
         font-size: .78rem;
+      }
+      .log-suggestion {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .reminder-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin-top: 14px;
       }
       .connection-box {
         display: grid;
@@ -366,6 +432,8 @@
 
       @media (max-width: 860px) {
         .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid { grid-template-columns: 1fr; }
+        .schedule-form .wide-field { grid-column: auto; }
+        .schedule-item { grid-template-columns: 1fr; }
         .habit-card, .goal-card { grid-template-columns: 1fr; }
         .habit-actions, .step-controls { justify-content: stretch; }
         .habit-actions button, .step-controls button { flex: 1; width: auto; }
@@ -485,12 +553,19 @@
           <form class="schedule-form" id="schedule-form">
             <label>Date<input class="field" id="schedule-date" type="date" required /></label>
             <label>Habit<select class="select-field" id="schedule-habit"></select></label>
-            <label>Activity<input class="field" id="schedule-title" placeholder="Study, gym, dinner, rest" required /></label>
+            <label class="wide-field">Activity<input class="field" id="schedule-title" placeholder="Study, gym, dinner, rest" required /></label>
             <label>Start<input class="field" id="schedule-start" type="time" value="08:00" required /></label>
             <label>End<input class="field" id="schedule-end" type="time" value="09:00" required /></label>
             <label>Category<select class="select-field" id="schedule-category"><option>Study</option><option>Work</option><option>Exercise</option><option>Meal</option><option>Rest</option><option>Chores</option><option>Social</option><option>Personal</option></select></label>
+            <label>Repeat<select class="select-field" id="schedule-repeat"><option value="once">One day</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option><option value="specific">Specific days</option></select></label>
+            <label>Reminder<select class="select-field" id="schedule-reminder"><option value="0">No reminder</option><option value="5">5 min before</option><option value="10">10 min before</option><option value="15">15 min before</option><option value="30">30 min before</option><option value="60">1 hour before</option></select></label>
+            <label class="wide-field">Specific days<div class="weekday-picker" id="schedule-weekdays" aria-label="Specific repeat days"></div></label>
             <button class="primary-action" type="submit">Schedule</button>
           </form>
+          <div class="reminder-toolbar">
+            <button class="ghost-action" id="enable-reminders" type="button">Enable reminders</button>
+            <span class="muted" id="reminder-status">Reminders are local to this browser.</span>
+          </div>
         </section>
         <section class="panel">
           <div class="panel-heading"><div><span class="eyebrow">Schedule</span><h2>Plan your habit week</h2></div></div>
@@ -541,6 +616,7 @@
       const SCHEDULE_KEY = "habit-tracker:schedule";
       const SESSION_KEY = "habit-tracker:session";
       const SETTINGS_KEY = "habit-tracker:settings";
+      const REMINDER_LOG_KEY = "habit-tracker:reminder-log";
       const COLORS = ["#5eead4", "#60a5fa", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#86efac", "#38bdf8", "#fb923c", "#c084fc", "#34d399", "#f43f5e"];
       const THEMES = [
         { id: "midnight", label: "Midnight", className: "", colors: ["#08111f", "#5eead4", "#a78bfa"] },
@@ -549,6 +625,16 @@
         { id: "ocean", label: "Ocean", className: "theme-ocean", colors: ["#07131d", "#38bdf8", "#2dd4bf"] },
         { id: "light", label: "Light", className: "theme-light", colors: ["#edf2f7", "#0f766e", "#7c3aed"] },
       ];
+      const WEEKDAYS = [
+        { value: "1", label: "Mon" },
+        { value: "2", label: "Tue" },
+        { value: "3", label: "Wed" },
+        { value: "4", label: "Thu" },
+        { value: "5", label: "Fri" },
+        { value: "6", label: "Sat" },
+        { value: "0", label: "Sun" },
+      ];
+      const REPEAT_LABELS = { once: "One day", daily: "Daily", weekdays: "Weekdays", weekends: "Weekends", specific: "Specific days" };
       let session = loadSession();
       let settings = loadSettings();
       let state = loadState();
@@ -559,6 +645,7 @@
       let activePage = "today";
       let activeDay = todayKey();
       let selectedScheduleDate = todayKey();
+      let selectedScheduleDays = ["1", "2", "3", "4", "5"];
       let stepTracking = false;
       let lastMagnitude = 0;
       let lastStepAt = 0;
@@ -625,9 +712,9 @@
       }
       function buildSeedSchedule() {
         return [
-          { id: "schedule_study", habitId: "habit_read", title: "Focused study", category: "Study", start: "08:00", end: "09:00", days: ["daily"] },
-          { id: "schedule_walk", habitId: "habit_steps", title: "Walk outside", category: "Exercise", start: "18:00", end: "18:30", days: ["daily"] },
-          { id: "schedule_rest", habitId: "habit_move", title: "Rest and stretch", category: "Rest", start: "21:30", end: "22:00", days: ["daily"] },
+          { id: "schedule_study", habitId: "habit_read", title: "Focused study", category: "Study", start: "08:00", end: "09:00", repeat: "weekdays", reminderMinutes: 15, days: ["1", "2", "3", "4", "5"] },
+          { id: "schedule_walk", habitId: "habit_steps", title: "Walk outside", category: "Exercise", start: "18:00", end: "18:30", repeat: "daily", reminderMinutes: 10, days: [] },
+          { id: "schedule_rest", habitId: "habit_move", title: "Rest and stretch", category: "Rest", start: "21:30", end: "22:00", repeat: "daily", reminderMinutes: 0, days: [] },
         ];
       }
       function loadSchedule() {
@@ -841,10 +928,89 @@
       function renderGoals() {
         document.getElementById("goals-list").innerHTML = getActiveHabits().map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${habit.targetAmount} ${habit.unit} · ${habit.description || "No description"}</p></div><div class="habit-actions"><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("");
       }
+      function scheduleRepeatFor(item) {
+        if (item.repeat) return item.repeat;
+        if ((item.days || []).includes("daily")) return "daily";
+        return item.days?.length ? "specific" : "once";
+      }
+      function scheduleMatchesDate(item, date) {
+        const weekday = String(new Date(`${date}T12:00:00`).getDay());
+        const repeat = scheduleRepeatFor(item);
+        if (repeat === "once") return item.date === date;
+        if (item.date && date < item.date) return false;
+        if (repeat === "daily") return true;
+        if (repeat === "weekdays") return ["1", "2", "3", "4", "5"].includes(weekday);
+        if (repeat === "weekends") return ["0", "6"].includes(weekday);
+        if (repeat === "specific") return (item.days || []).map(String).includes(weekday);
+        return false;
+      }
+      function repeatText(item) {
+        const repeat = scheduleRepeatFor(item);
+        if (repeat !== "specific") return REPEAT_LABELS[repeat] || "One day";
+        const labels = (item.days || []).map(String).map((day) => WEEKDAYS.find((entry) => entry.value === day)?.label).filter(Boolean);
+        return labels.length ? labels.join(", ") : "Specific days";
+      }
+      function reminderText(minutes) {
+        const value = Number(minutes || 0);
+        if (!value) return "No reminder";
+        return value === 60 ? "Reminder 1 hour before" : `Reminder ${value} min before`;
+      }
+      function hasBlockEnded(item, date) {
+        const end = new Date(`${date}T${item.end || "23:59"}:00`);
+        return new Date() >= end;
+      }
+      function reminderKey(item, date) { return `${date}:${item.id}:${item.start}:${item.reminderMinutes || 0}`; }
+      function getReminderLog() {
+        try { return JSON.parse(localStorage.getItem(storageKey(REMINDER_LOG_KEY)) || "[]"); } catch { return []; }
+      }
+      function saveReminderLog(log) {
+        localStorage.setItem(storageKey(REMINDER_LOG_KEY), JSON.stringify(log.slice(-120)));
+      }
+      function updateReminderStatus() {
+        const status = document.getElementById("reminder-status");
+        if (!status) return;
+        if (!("Notification" in window)) {
+          status.textContent = "Browser reminders are not supported here.";
+          return;
+        }
+        status.textContent = Notification.permission === "granted"
+          ? "Reminders are on for this browser."
+          : Notification.permission === "denied"
+            ? "Reminders are blocked in browser settings."
+            : "Reminders are local to this browser.";
+      }
+      async function enableScheduleReminders() {
+        if (!("Notification" in window)) {
+          updateReminderStatus();
+          return;
+        }
+        if (Notification.permission !== "granted") await Notification.requestPermission();
+        updateReminderStatus();
+      }
+      function checkScheduleReminders() {
+        if (!session || !("Notification" in window) || Notification.permission !== "granted") return;
+        const now = new Date();
+        const date = todayKey();
+        const sent = new Set(getReminderLog());
+        let changed = false;
+        getScheduleForDate(date).forEach((item) => {
+          const minutes = Number(item.reminderMinutes || 0);
+          if (!minutes) return;
+          const reminderAt = new Date(`${date}T${item.start}:00`);
+          reminderAt.setMinutes(reminderAt.getMinutes() - minutes);
+          const diffMs = now.getTime() - reminderAt.getTime();
+          const key = reminderKey(item, date);
+          if (diffMs >= 0 && diffMs < 60000 && !sent.has(key)) {
+            new Notification(item.title, { body: `${reminderText(minutes)}: ${item.start}-${item.end}` });
+            sent.add(key);
+            changed = true;
+          }
+        });
+        if (changed) saveReminderLog([...sent]);
+      }
       function getScheduleForDate(date) {
-        const weekday = new Date(`${date}T12:00:00`).getDay();
         return schedule
-          .filter((item) => item.date === date || (item.days || []).includes("daily") || (item.days || []).includes(String(weekday)))
+          .filter((item) => scheduleMatchesDate(item, date))
           .sort((a, b) => a.start.localeCompare(b.start));
       }
       function renderSchedule() {
@@ -852,6 +1018,8 @@
         const habits = getActiveHabits();
         document.getElementById("schedule-date").value = selectedScheduleDate;
         document.getElementById("schedule-habit").innerHTML = `<option value="">Daily life / no habit</option>` + habits.map((habit) => `<option value="${habit.id}">${escapeHtml(habit.name)}</option>`).join("");
+        document.getElementById("schedule-weekdays").innerHTML = WEEKDAYS.map((day) => `<button type="button" class="${selectedScheduleDays.includes(day.value) ? "active" : ""}" data-weekday="${day.value}">${day.label}</button>`).join("");
+        updateReminderStatus();
         document.getElementById("schedule-grid").innerHTML = days.map((date, index) => {
           const dayName = index === 0 ? "Today" : formatReadableDate(date);
           const dayBlocks = getScheduleForDate(date);
@@ -865,7 +1033,8 @@
           ? selectedSchedule.map((item) => {
             const habit = habits.find((entry) => entry.id === item.habitId);
             const status = habit ? checkDailyGoalStatus(state, habit.id, selectedScheduleDate) : { percentage: 0 };
-            return `<article class="schedule-item"><div class="schedule-time">${item.start}-${item.end}</div><div><strong>${escapeHtml(item.title)}</strong><p class="muted">${escapeHtml(habit?.name || "Daily life")} · ${status.percentage}% complete</p><span class="category-pill">${escapeHtml(item.category)}</span></div><button class="ghost-action" type="button" data-schedule-delete="${item.id}">Remove</button></article>`;
+            const canSuggestLog = habit && selectedScheduleDate <= todayKey() && hasBlockEnded(item, selectedScheduleDate) && !status.isGoalMet;
+            return `<article class="schedule-item"><div class="schedule-time">${item.start}-${item.end}</div><div><strong>${escapeHtml(item.title)}</strong><p class="muted">${escapeHtml(habit?.name || "Daily life")} · ${status.percentage}% complete</p><div class="schedule-meta"><span class="category-pill">${escapeHtml(item.category)}</span><span class="category-pill">${escapeHtml(repeatText(item))}</span><span class="category-pill">${escapeHtml(reminderText(item.reminderMinutes))}</span></div>${canSuggestLog ? `<div class="log-suggestion"><span class="muted">This block ended. Log ${escapeHtml(habit.name)}?</span><button class="ghost-action" type="button" data-schedule-log="${habit.id}">Log habit</button><button class="primary-action" type="button" data-schedule-complete="${habit.id}">Mark done</button></div>` : ""}</div><button class="ghost-action" type="button" data-schedule-delete="${item.id}">Remove</button></article>`;
           }).join("")
           : `<article class="schedule-card"><strong>No time blocks yet</strong><p class="muted">Add study, work, rest, meals, chores, or exercise blocks for this date above.</p></article>`;
       }
@@ -1028,6 +1197,7 @@
         event.preventDefault();
         const habitId = document.getElementById("schedule-habit").value;
         const habit = getActiveHabits().find((item) => item.id === habitId);
+        const repeat = document.getElementById("schedule-repeat").value;
         selectedScheduleDate = document.getElementById("schedule-date").value || todayKey();
         schedule = [
           ...schedule,
@@ -1039,17 +1209,37 @@
             category: document.getElementById("schedule-category").value,
             start: document.getElementById("schedule-start").value,
             end: document.getElementById("schedule-end").value,
-            days: [],
+            repeat,
+            reminderMinutes: Number(document.getElementById("schedule-reminder").value),
+            days: repeat === "specific" ? [...selectedScheduleDays] : [],
           },
         ];
         event.currentTarget.reset();
         document.getElementById("schedule-date").value = selectedScheduleDate;
         document.getElementById("schedule-start").value = "08:00";
         document.getElementById("schedule-end").value = "09:00";
+        document.getElementById("schedule-repeat").value = "once";
+        document.getElementById("schedule-reminder").value = "0";
         render();
       });
       document.getElementById("schedule-date").addEventListener("change", (event) => {
         selectedScheduleDate = event.target.value || todayKey();
+        render();
+      });
+      document.getElementById("enable-reminders").addEventListener("click", enableScheduleReminders);
+      document.getElementById("schedule-repeat").addEventListener("change", (event) => {
+        if (event.target.value === "weekdays") selectedScheduleDays = ["1", "2", "3", "4", "5"];
+        if (event.target.value === "weekends") selectedScheduleDays = ["6", "0"];
+        render();
+      });
+      document.getElementById("schedule-weekdays").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-weekday]");
+        if (!button) return;
+        const day = button.dataset.weekday;
+        selectedScheduleDays = selectedScheduleDays.includes(day)
+          ? selectedScheduleDays.filter((value) => value !== day)
+          : [...selectedScheduleDays, day];
+        document.getElementById("schedule-repeat").value = "specific";
         render();
       });
       document.getElementById("habit-list").addEventListener("click", (event) => {
@@ -1072,9 +1262,16 @@
         render();
       });
       document.getElementById("schedule-list").addEventListener("click", (event) => {
-        const button = event.target.closest("button[data-schedule-delete]");
-        if (!button) return;
-        schedule = schedule.filter((item) => item.id !== button.dataset.scheduleDelete);
+        const removeButton = event.target.closest("button[data-schedule-delete]");
+        const logButton = event.target.closest("button[data-schedule-log]");
+        const completeButton = event.target.closest("button[data-schedule-complete]");
+        if (!removeButton && !logButton && !completeButton) return;
+        if (removeButton) schedule = schedule.filter((item) => item.id !== removeButton.dataset.scheduleDelete);
+        if (logButton) state = logProgress(state, logButton.dataset.scheduleLog, selectedScheduleDate, 1);
+        if (completeButton) {
+          const habit = getActiveHabits().find((item) => item.id === completeButton.dataset.scheduleComplete);
+          if (habit) state = setProgress(state, habit.id, selectedScheduleDate, habit.targetAmount);
+        }
         render();
       });
       document.getElementById("schedule-grid").addEventListener("click", (event) => {
@@ -1162,6 +1359,7 @@
         const currentDay = todayKey();
         if (currentDay !== activeDay) { activeDay = currentDay; render(); }
       }, 1000);
+      setInterval(checkScheduleReminders, 30000);
 
       applyTheme();
       render();
