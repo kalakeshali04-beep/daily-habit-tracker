@@ -260,14 +260,35 @@
       .habit-actions { gap: 8px; }
       .habit-actions button {
         display: grid;
-        width: 40px;
+        min-width: 40px;
         min-height: 40px;
         place-items: center;
+        padding: 0 10px;
         border: 1px solid rgba(255,255,255,.12);
         border-radius: 8px;
         color: #f8fafc;
         background: rgba(255,255,255,.06);
       }
+      .badge-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(160px, 1fr));
+        gap: 12px;
+      }
+      .badge-card {
+        display: grid;
+        gap: 8px;
+        min-height: 122px;
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+      .badge-card.earned {
+        border-color: color-mix(in srgb, var(--primary), transparent 35%);
+        background: var(--primary-soft);
+      }
+      .badge-icon { font-size: 1.55rem; line-height: 1; }
+      .badge-card p { color: var(--muted); line-height: 1.45; }
 
       .reports-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
       .report-tile {
@@ -579,7 +600,7 @@
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
       @media (max-width: 860px) {
-        .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid, .analytics-grid { grid-template-columns: 1fr; }
+        .dashboard-grid, .reports-grid, .step-panel, .form-grid, .schedule-form, .chart-toolbar, .settings-grid, .theme-grid, .schedule-grid, .analytics-grid, .badge-grid { grid-template-columns: 1fr; }
         .form-grid .wide-field { grid-column: auto; }
         .schedule-form .wide-field { grid-column: auto; }
         .drawer-panel .form-grid, .drawer-panel .schedule-form { grid-template-columns: 1fr; }
@@ -663,6 +684,10 @@
           </div>
           <div class="step-status" id="step-status">Use this on a phone and tap Start counting. Desktop browsers can use +100 steps.</div>
         </section>
+        <section class="panel">
+          <div class="panel-heading"><div><span class="eyebrow">Achievements</span><h2>Badges earned</h2></div></div>
+          <div class="badge-grid" id="badge-grid"></div>
+        </section>
       </section>
 
       <section class="page" id="page-graphs">
@@ -711,7 +736,7 @@
       <div class="drawer-backdrop" id="drawer-backdrop"></div>
       <aside class="drawer-panel" id="habit-drawer" aria-hidden="true">
         <div class="drawer-heading">
-          <div><span class="eyebrow">Set goals</span><h2>Create a habit</h2><p>Choose the target, category, active days, and color.</p></div>
+          <div><span class="eyebrow" id="habit-drawer-eyebrow">Set goals</span><h2 id="habit-drawer-title">Create a habit</h2><p id="habit-drawer-copy">Choose the target, category, active days, and color.</p></div>
           <button class="ghost-action" type="button" data-close-drawer>Close</button>
         </div>
           <form class="form-grid" id="habit-form">
@@ -722,14 +747,14 @@
             <label>Goal style<select class="select-field" id="habit-goal-type"><option value="daily">Daily on selected days</option><option value="weekly">Weekly total</option></select></label>
             <label>Weekly target<input class="field" id="habit-weekly-goal" type="number" min="1" value="3" required /></label>
             <label class="wide-field">Active days / rest days<div class="goal-day-picker" id="habit-weekdays" aria-label="Habit active days"></div></label>
-            <button class="primary-action" type="submit">Add habit</button>
+            <button class="primary-action" type="submit" id="habit-submit-label">Add habit</button>
           </form>
           <div class="swatches" id="swatches" role="radiogroup" aria-label="Habit color"></div>
       </aside>
 
       <aside class="drawer-panel" id="schedule-drawer" aria-hidden="true">
         <div class="drawer-heading">
-          <div><span class="eyebrow">Add time block</span><h2>Connect a habit to your day</h2><p>Plan habits or daily-life blocks for today or another date.</p></div>
+          <div><span class="eyebrow" id="schedule-drawer-eyebrow">Add time block</span><h2 id="schedule-drawer-title">Connect a habit to your day</h2><p id="schedule-drawer-copy">Plan habits or daily-life blocks for today or another date.</p></div>
           <button class="ghost-action" type="button" data-close-drawer>Close</button>
         </div>
           <form class="schedule-form" id="schedule-form">
@@ -742,7 +767,7 @@
             <label>Repeat<select class="select-field" id="schedule-repeat"><option value="once">One day</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option><option value="specific">Specific days</option></select></label>
             <label>Reminder<select class="select-field" id="schedule-reminder"><option value="0">No reminder</option><option value="5">5 min before</option><option value="10">10 min before</option><option value="15">15 min before</option><option value="30">30 min before</option><option value="60">1 hour before</option></select></label>
             <label class="wide-field">Specific days<div class="weekday-picker" id="schedule-weekdays" aria-label="Specific repeat days"></div></label>
-            <button class="primary-action" type="submit">Schedule</button>
+            <button class="primary-action" type="submit" id="schedule-submit-label">Schedule</button>
           </form>
       </aside>
 
@@ -833,6 +858,8 @@
       let selectedScheduleDate = todayKey();
       let selectedScheduleDays = ["1", "2", "3", "4", "5"];
       let selectedHabitDays = [...ALL_DAY_VALUES];
+      let editingHabitId = "";
+      let editingScheduleId = "";
       let stepTracking = false;
       let lastMagnitude = 0;
       let lastStepAt = 0;
@@ -1282,6 +1309,26 @@
         });
         return rows.slice(0, limit);
       }
+      function wasPerfectDay(date) {
+        const due = getDueHabitsForDate(date);
+        return due.length > 0 && due.every((habit) => checkDailyGoalStatus(state, habit.id, date).isGoalMet);
+      }
+      function hasComebackDay() {
+        const days = eachDay(addDays(todayKey(), -30), todayKey());
+        return days.some((date, index) => index > 0 && completionForDate(state, days[index - 1]) < 50 && completionForDate(state, date) >= 80);
+      }
+      function getAchievements() {
+        const habits = getActiveHabits();
+        const bestCurrentStreak = habits.length ? Math.max(...habits.map((habit) => calculateCurrentStreak(state, habit.id))) : 0;
+        const weeklyScore = averageCompletion(state, habits, eachDay(addDays(todayKey(), -6), todayKey()));
+        return [
+          { id: "streak_3", icon: "3", title: "3-Day Streak", description: "Keep any habit alive for 3 active days.", earned: bestCurrentStreak >= 3 },
+          { id: "streak_7", icon: "7", title: "7-Day Streak", description: "A full week of momentum on one habit.", earned: bestCurrentStreak >= 7 },
+          { id: "weekly_win", icon: "%", title: "Weekly Win", description: "Reach 80% consistency this week.", earned: weeklyScore >= 80 },
+          { id: "perfect_day", icon: "✓", title: "Perfect Day", description: "Complete every goal due today.", earned: wasPerfectDay(todayKey()) },
+          { id: "comeback", icon: "↗", title: "Comeback Day", description: "Bounce back after a low-completion day.", earned: hasComebackDay() },
+        ];
+      }
 
       function getStepHabit() { return getActiveHabits().find((habit) => habit.unit === "steps") || getActiveHabits().find((habit) => habit.name.toLowerCase() === "steps"); }
       function ensureStepHabit() {
@@ -1341,6 +1388,9 @@
         const dueToday = getActiveHabits().filter((habit) => targetForDate(habit, today) > 0).length;
         document.getElementById("completion-headline").textContent = `${daily.habitsCompleted} of ${dueToday} goals due today complete`;
         document.getElementById("reports").innerHTML = `<div class="report-tile"><span>Daily</span><strong>${daily.averageCompletionRate}%</strong><p>${daily.habitsCompleted} completed today</p></div><div class="report-tile"><span>Weekly</span><strong>${weekly.averageCompletionRate}%</strong><p>Completion this week</p></div><div class="report-tile"><span>Monthly</span><strong>${monthly.averageCompletionRate}%</strong><p>${monthly.monthOverMonthGrowth >= 0 ? "+" : ""}${monthly.monthOverMonthGrowth}% vs last month</p></div>`;
+      }
+      function renderBadges() {
+        document.getElementById("badge-grid").innerHTML = getAchievements().map((badge) => `<article class="badge-card ${badge.earned ? "earned" : ""}"><span class="badge-icon">${badge.icon}</span><strong>${escapeHtml(badge.title)}</strong><p>${escapeHtml(badge.earned ? "Earned. " : "Locked. ")}${escapeHtml(badge.description)}</p></article>`).join("");
       }
       function renderStepCounter() {
         const habit = ensureStepHabit();
@@ -1421,7 +1471,7 @@
       function renderGoals() {
         const habits = getActiveHabits();
         document.getElementById("goals-list").innerHTML = habits.length
-          ? habits.map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${escapeHtml(goalPlanText(habit))} · ${escapeHtml(habit.description || "No description")}</p><div class="goal-meta"><span class="category-pill">${escapeHtml(categoryLabel(habit.category))}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Weekly target" : "Daily target"}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Flexible week" : `${escapeHtml(formatDays(activeDaysFor(habit)))} active`}</span></div></div><div class="habit-actions"><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("")
+          ? habits.map((habit) => `<article class="goal-card"><div><h3>${escapeHtml(habit.name)}</h3><p class="muted">${escapeHtml(goalPlanText(habit))} · ${escapeHtml(habit.description || "No description")}</p><div class="goal-meta"><span class="category-pill">${escapeHtml(categoryLabel(habit.category))}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Weekly target" : "Daily target"}</span><span class="category-pill">${goalTypeFor(habit) === "weekly" ? "Flexible week" : `${escapeHtml(formatDays(activeDaysFor(habit)))} active`}</span></div></div><div class="habit-actions"><button type="button" data-goal-edit="${habit.id}">Edit</button><button type="button" data-goal-minus="${habit.id}">−</button><button type="button" data-goal-plus="${habit.id}">+</button><button type="button" data-goal-delete="${habit.id}">□</button></div></article>`).join("")
           : `<article class="empty-state"><strong>No goals yet</strong><p>Add a habit to set daily or weekly goals, rest days, categories, and colors.</p><button class="primary-action" type="button" data-open-drawer="habit-drawer">Add habit</button></article>`;
       }
       function scheduleRepeatFor(item) {
@@ -1569,7 +1619,7 @@
             const habit = habits.find((entry) => entry.id === item.habitId);
             const status = habit ? checkDailyGoalStatus(state, habit.id, selectedScheduleDate) : { percentage: 0 };
             const canSuggestLog = habit && selectedScheduleDate <= todayKey() && hasBlockEnded(item, selectedScheduleDate) && !status.isGoalMet;
-            return `<article class="schedule-item"><div class="schedule-time">${item.start}-${item.end}</div><div><strong>${escapeHtml(item.title)}</strong><p class="muted">${escapeHtml(habit?.name || "Daily life")} · ${status.percentage}% complete</p><div class="schedule-meta"><span class="category-pill">${escapeHtml(item.category)}</span><span class="category-pill">${escapeHtml(repeatText(item))}</span><span class="category-pill">${escapeHtml(reminderText(item.reminderMinutes))}</span></div>${canSuggestLog ? `<div class="log-suggestion"><span class="muted">This block ended. Log ${escapeHtml(habit.name)}?</span><button class="ghost-action" type="button" data-schedule-log="${habit.id}">Log habit</button><button class="primary-action" type="button" data-schedule-complete="${habit.id}">Mark done</button></div>` : ""}</div><button class="ghost-action" type="button" data-schedule-delete="${item.id}">Remove</button></article>`;
+            return `<article class="schedule-item"><div class="schedule-time">${item.start}-${item.end}</div><div><strong>${escapeHtml(item.title)}</strong><p class="muted">${escapeHtml(habit?.name || "Daily life")} · ${status.percentage}% complete</p><div class="schedule-meta"><span class="category-pill">${escapeHtml(item.category)}</span><span class="category-pill">${escapeHtml(repeatText(item))}</span><span class="category-pill">${escapeHtml(reminderText(item.reminderMinutes))}</span></div>${canSuggestLog ? `<div class="log-suggestion"><span class="muted">This block ended. Log ${escapeHtml(habit.name)}?</span><button class="ghost-action" type="button" data-schedule-log="${habit.id}">Log habit</button><button class="primary-action" type="button" data-schedule-complete="${habit.id}">Mark done</button></div>` : ""}</div><div class="habit-actions"><button class="ghost-action" type="button" data-schedule-edit="${item.id}">Edit</button><button class="ghost-action" type="button" data-schedule-delete="${item.id}">Remove</button></div></article>`;
           }).join("")
           : `<article class="empty-state"><strong>No time blocks yet</strong><p>Add study, work, rest, meals, chores, or exercise blocks for this date.</p><button class="primary-action" type="button" data-open-drawer="schedule-drawer">Add time block</button></article>`;
       }
@@ -1608,6 +1658,78 @@
           drawer.setAttribute("aria-hidden", active ? "false" : "true");
         });
       }
+      function resetHabitDrawer() {
+        editingHabitId = "";
+        document.getElementById("habit-drawer-eyebrow").textContent = "Set goals";
+        document.getElementById("habit-drawer-title").textContent = "Create a habit";
+        document.getElementById("habit-drawer-copy").textContent = "Choose the target, category, active days, and color.";
+        document.getElementById("habit-submit-label").textContent = "Add habit";
+        document.getElementById("habit-form").reset();
+        document.getElementById("habit-goal").value = "1";
+        document.getElementById("habit-weekly-goal").value = "3";
+        document.getElementById("habit-unit").value = "boolean";
+        document.getElementById("habit-category").value = "health";
+        document.getElementById("habit-goal-type").value = "daily";
+        selectedHabitDays = [...ALL_DAY_VALUES];
+        selectedColor = COLORS[0];
+        renderHabitDayPicker();
+        renderSwatches();
+      }
+      function openHabitEditor(habitId) {
+        const habit = getHabitOrThrow(state, habitId);
+        editingHabitId = habit.id;
+        document.getElementById("habit-drawer-eyebrow").textContent = "Edit goal";
+        document.getElementById("habit-drawer-title").textContent = habit.name;
+        document.getElementById("habit-drawer-copy").textContent = "Update the name, color, category, target, and active days.";
+        document.getElementById("habit-submit-label").textContent = "Save habit";
+        document.getElementById("habit-name").value = habit.name;
+        document.getElementById("habit-goal").value = habit.targetAmount;
+        document.getElementById("habit-unit").value = habit.unit;
+        document.getElementById("habit-category").value = habit.category || "health";
+        document.getElementById("habit-goal-type").value = goalTypeFor(habit);
+        document.getElementById("habit-weekly-goal").value = weeklyTargetFor(habit);
+        selectedHabitDays = activeDaysFor(habit);
+        selectedColor = habit.colorCode || COLORS[0];
+        renderHabitDayPicker();
+        renderSwatches();
+        openDrawer("habit-drawer");
+      }
+      function resetScheduleDrawer() {
+        editingScheduleId = "";
+        document.getElementById("schedule-drawer-eyebrow").textContent = "Add time block";
+        document.getElementById("schedule-drawer-title").textContent = "Connect a habit to your day";
+        document.getElementById("schedule-drawer-copy").textContent = "Plan habits or daily-life blocks for today or another date.";
+        document.getElementById("schedule-submit-label").textContent = "Schedule";
+        document.getElementById("schedule-form").reset();
+        document.getElementById("schedule-date").value = selectedScheduleDate;
+        document.getElementById("schedule-start").value = "08:00";
+        document.getElementById("schedule-end").value = "09:00";
+        document.getElementById("schedule-repeat").value = "once";
+        document.getElementById("schedule-reminder").value = "0";
+        selectedScheduleDays = ["1", "2", "3", "4", "5"];
+        renderSchedule();
+      }
+      function openScheduleEditor(scheduleId) {
+        const item = schedule.find((entry) => entry.id === scheduleId);
+        if (!item) return;
+        editingScheduleId = item.id;
+        selectedScheduleDate = item.date || selectedScheduleDate;
+        selectedScheduleDays = item.days?.length ? item.days.map(String) : ["1", "2", "3", "4", "5"];
+        document.getElementById("schedule-drawer-eyebrow").textContent = "Edit time block";
+        document.getElementById("schedule-drawer-title").textContent = item.title;
+        document.getElementById("schedule-drawer-copy").textContent = "Update the date, repeat rule, reminder, and linked habit.";
+        document.getElementById("schedule-submit-label").textContent = "Save block";
+        renderSchedule();
+        document.getElementById("schedule-date").value = selectedScheduleDate;
+        document.getElementById("schedule-habit").value = item.habitId || "";
+        document.getElementById("schedule-title").value = item.title || "";
+        document.getElementById("schedule-start").value = item.start || "08:00";
+        document.getElementById("schedule-end").value = item.end || "09:00";
+        document.getElementById("schedule-category").value = item.category || "Personal";
+        document.getElementById("schedule-repeat").value = scheduleRepeatFor(item);
+        document.getElementById("schedule-reminder").value = String(item.reminderMinutes || 0);
+        openDrawer("schedule-drawer");
+      }
       function closeDrawers() {
         const backdrop = document.getElementById("drawer-backdrop");
         if (backdrop) backdrop.classList.remove("active");
@@ -1635,6 +1757,7 @@
         document.getElementById("ring-legend").innerHTML = rings.map((ring) => `<span><span class="dot" style="background:${ring.color}"></span>${escapeHtml(ring.label)} ${ring.percentage}%</span>`).join("");
         renderHabitCards(habits);
         renderReports();
+        renderBadges();
         renderStepCounter();
         renderTabs(habits);
         renderChart();
@@ -1744,32 +1867,42 @@
       });
       document.getElementById("sign-out").addEventListener("click", () => { session = null; saveSession(); render(); });
       document.querySelectorAll(".nav-tabs button").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
-      document.getElementById("open-habit-drawer").addEventListener("click", () => openDrawer("habit-drawer"));
-      document.getElementById("open-schedule-drawer").addEventListener("click", () => openDrawer("schedule-drawer"));
+      document.getElementById("open-habit-drawer").addEventListener("click", () => { resetHabitDrawer(); openDrawer("habit-drawer"); });
+      document.getElementById("open-schedule-drawer").addEventListener("click", () => { resetScheduleDrawer(); openDrawer("schedule-drawer"); });
       document.getElementById("drawer-backdrop").addEventListener("click", closeDrawers);
       document.querySelectorAll("[data-close-drawer]").forEach((button) => button.addEventListener("click", closeDrawers));
       document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawers(); });
       document.addEventListener("click", (event) => {
         const button = event.target.closest("button[data-open-drawer]");
         if (!button) return;
+        if (button.dataset.openDrawer === "habit-drawer") resetHabitDrawer();
+        if (button.dataset.openDrawer === "schedule-drawer") resetScheduleDrawer();
         openDrawer(button.dataset.openDrawer);
       });
       document.getElementById("habit-form").addEventListener("submit", (event) => {
         event.preventDefault();
         const dailyGoal = Number(document.getElementById("habit-goal").value);
         const weeklyGoal = Number(document.getElementById("habit-weekly-goal").value);
-        state = createHabit(state, document.getElementById("habit-name").value, dailyGoal, document.getElementById("habit-unit").value, selectedColor, "", {
+        const habitPayload = {
+          name: document.getElementById("habit-name").value.trim(),
+          targetAmount: Math.max(1, dailyGoal),
+          unit: document.getElementById("habit-unit").value,
           category: document.getElementById("habit-category").value,
           goalType: document.getElementById("habit-goal-type").value,
-          weeklyTarget: weeklyGoal,
+          weeklyTarget: Math.max(1, weeklyGoal),
           activeDays: selectedHabitDays.length ? [...selectedHabitDays] : [...ALL_DAY_VALUES],
-        });
+          colorCode: selectedColor,
+        };
+        state = editingHabitId
+          ? updateHabit(state, editingHabitId, habitPayload)
+          : createHabit(state, habitPayload.name, habitPayload.targetAmount, habitPayload.unit, selectedColor, "", habitPayload);
         event.currentTarget.reset();
         document.getElementById("habit-goal").value = "1";
         document.getElementById("habit-weekly-goal").value = "3";
         document.getElementById("habit-unit").value = "boolean";
         document.getElementById("habit-category").value = "health";
         document.getElementById("habit-goal-type").value = "daily";
+        editingHabitId = "";
         selectedHabitDays = [...ALL_DAY_VALUES];
         selectedColor = COLORS[0];
         closeDrawers();
@@ -1790,27 +1923,27 @@
         const habit = getActiveHabits().find((item) => item.id === habitId);
         const repeat = document.getElementById("schedule-repeat").value;
         selectedScheduleDate = document.getElementById("schedule-date").value || todayKey();
-        schedule = [
-          ...schedule,
-          {
-            id: uid("schedule"),
-            habitId,
-            date: selectedScheduleDate,
-            title: document.getElementById("schedule-title").value.trim() || habit?.name || "Daily life",
-            category: document.getElementById("schedule-category").value,
-            start: document.getElementById("schedule-start").value,
-            end: document.getElementById("schedule-end").value,
-            repeat,
-            reminderMinutes: Number(document.getElementById("schedule-reminder").value),
-            days: repeat === "specific" ? [...selectedScheduleDays] : [],
-          },
-        ];
+        const schedulePayload = {
+          habitId,
+          date: selectedScheduleDate,
+          title: document.getElementById("schedule-title").value.trim() || habit?.name || "Daily life",
+          category: document.getElementById("schedule-category").value,
+          start: document.getElementById("schedule-start").value,
+          end: document.getElementById("schedule-end").value,
+          repeat,
+          reminderMinutes: Number(document.getElementById("schedule-reminder").value),
+          days: repeat === "specific" ? [...selectedScheduleDays] : [],
+        };
+        schedule = editingScheduleId
+          ? schedule.map((item) => item.id === editingScheduleId ? { ...item, ...schedulePayload } : item)
+          : [...schedule, { id: uid("schedule"), ...schedulePayload }];
         event.currentTarget.reset();
         document.getElementById("schedule-date").value = selectedScheduleDate;
         document.getElementById("schedule-start").value = "08:00";
         document.getElementById("schedule-end").value = "09:00";
         document.getElementById("schedule-repeat").value = "once";
         document.getElementById("schedule-reminder").value = "0";
+        editingScheduleId = "";
         closeDrawers();
         render();
       });
@@ -1855,9 +1988,14 @@
         render();
       });
       document.getElementById("goals-list").addEventListener("click", (event) => {
+        const edit = event.target.closest("button[data-goal-edit]");
         const plus = event.target.closest("button[data-goal-plus]");
         const minus = event.target.closest("button[data-goal-minus]");
         const del = event.target.closest("button[data-goal-delete]");
+        if (edit) {
+          openHabitEditor(edit.dataset.goalEdit);
+          return;
+        }
         if (plus) {
           const habit = getHabitOrThrow(state, plus.dataset.goalPlus);
           state = goalTypeFor(habit) === "weekly"
@@ -1874,10 +2012,15 @@
         render();
       });
       document.getElementById("schedule-list").addEventListener("click", (event) => {
+        const editButton = event.target.closest("button[data-schedule-edit]");
         const removeButton = event.target.closest("button[data-schedule-delete]");
         const logButton = event.target.closest("button[data-schedule-log]");
         const completeButton = event.target.closest("button[data-schedule-complete]");
-        if (!removeButton && !logButton && !completeButton) return;
+        if (!editButton && !removeButton && !logButton && !completeButton) return;
+        if (editButton) {
+          openScheduleEditor(editButton.dataset.scheduleEdit);
+          return;
+        }
         if (removeButton) schedule = schedule.filter((item) => item.id !== removeButton.dataset.scheduleDelete);
         if (logButton) state = logProgress(state, logButton.dataset.scheduleLog, selectedScheduleDate, 1);
         if (completeButton) {
