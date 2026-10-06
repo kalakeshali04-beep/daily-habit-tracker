@@ -77,8 +77,20 @@ npm install
 npm run dev
 ```
 
+## HTTPS Hosting
+
+This repo is ready for GitHub Pages branch hosting. After GitHub Pages is enabled for the repository, GitHub can publish the standalone `index.html` directly from the `main` branch root.
+
+Expected URL:
+
+```text
+https://kalakeshali04-beep.github.io/daily-habit-tracker/
+```
+
+To turn it on, open the GitHub repo and go to **Settings → Pages**. Set **Source** to **Deploy from a branch**, choose **main**, choose **/(root)**, and save. After GitHub publishes the page, use that HTTPS URL in Supabase Auth settings as the Site URL and redirect URL.
+
 ## Recommended Next Steps
 
-- Host the app on GitHub Pages, Vercel, Netlify, Firebase Hosting, or Sites so Google login has a stable redirect URL
+- Enable GitHub Pages for the repo and copy the HTTPS URL into Supabase Auth settings
 - Convert to a Progressive Web App
 - Add conflict resolution for editing offline on multiple devices at the same time
